@@ -6,6 +6,8 @@
 
 A powerful and modern Lavalink v4 client for Node.js with advanced audio filtering, improved performance, and extensive customization options.
 
+> **Note**: This is a modernized fork of the original erela.js by MenuDocs, updated with full Lavalink v4 support, new audio filters, and enhanced features. For the original v2.x version, see [MenuDocs/erela.js](https://github.com/MenuDocs/erela.js).
+
 ## 🎉 What's New in v3.0
 
 - ✨ **Full Lavalink v4 Support** - Updated REST API and WebSocket endpoints
@@ -20,10 +22,40 @@ A powerful and modern Lavalink v4 client for Node.js with advanced audio filteri
 
 ## 📦 Installation
 
+### From npm (Stable Release)
+
 ```bash
 npm install erela.js
 # or
 yarn add erela.js
+# or
+pnpm add erela.js
+```
+
+### From GitHub (Development/Latest)
+
+```bash
+# Install directly from GitHub
+npm install ryxu-xo/erela.js
+
+# or clone and install locally
+git clone https://github.com/ryxu-xo/erela.js.git
+cd erela.js
+npm install
+npm run build
+
+# then in your project
+npm install /path/to/erela.js
+```
+
+### Package Manager Alternatives
+
+```bash
+# Using Yarn from GitHub
+yarn add https://github.com/ryxu-xo/erela.js
+
+# Using pnpm from GitHub
+pnpm add ryxu-xo/erela.js
 ```
 
 ## 🚀 Quick Start
@@ -475,23 +507,59 @@ Apache-2.0 License - see the [LICENSE](LICENSE) file for details.
 
 ## 🙏 Credits
 
-- **Original Library**: MenuDocs team (erela.js)
-- **v3.0 Modernization**: [ryxu-xo](https://github.com/ryxu-xo)
+- **Original Library**: [MenuDocs](https://github.com/MenuDocs) team (erela.js v2.x)
+- **v3.0 Modernization & Lavalink v4 Support**: [ryxu-xo](https://github.com/ryxu-xo)
+- **Original Contributors**: Solaris9, Anish-Shobith, melike2d, ayntee
 - Built for the Discord.js ecosystem
 - Community contributors and testers
 
 ## 📚 Links
 
-- [GitHub Repository](https://github.com/MenuDocs/erela.js)
-- [npm Package](https://www.npmjs.com/package/erela.js)
-- [Lavalink](https://github.com/lavalink-devs/Lavalink)
-- [Discord.js](https://discord.js.org)
+### This Fork (v3.0 - Lavalink v4)
+- **GitHub Repository**: [ryxu-xo/erela.js](https://github.com/ryxu-xo/erela.js)
+- **Issues & Support**: [GitHub Issues](https://github.com/ryxu-xo/erela.js/issues)
+- **Discussions**: [GitHub Discussions](https://github.com/ryxu-xo/erela.js/discussions)
+
+### Original & Resources
+- **Original erela.js**: [MenuDocs/erela.js](https://github.com/MenuDocs/erela.js)
+- **npm Package**: [erela.js on npm](https://www.npmjs.com/package/erela.js)
+- **Lavalink v4**: [Lavalink Repository](https://github.com/lavalink-devs/Lavalink)
+- **Discord.js**: [Discord.js Guide](https://discordjs.guide)
 
 ## ⚠️ Requirements
 
-- Node.js 18.0.0 or higher
-- Lavalink v4.0.0 or higher
-- Discord library (discord.js, eris, etc.)
+- **Node.js**: 18.0.0 or higher
+- **Lavalink**: v4.0.0 or higher (v3 supported via `restVersion: "v3"`)
+- **Discord Library**: discord.js v14+, eris, or any compatible library
+- **TypeScript**: 5.0+ (optional, for TypeScript projects)
+
+## 🔄 Version Compatibility
+
+| erela.js Version | Lavalink Version | Node.js Version |
+|-----------------|------------------|-----------------|
+| v3.0.x (this fork) | v4.0.0+ | 18.0.0+ |
+| v2.4.0 (original) | v3.x | 16.0.0+ |
+
+## 🆚 Differences from Original
+
+This fork includes several major enhancements over the original erela.js:
+
+### New Features ✨
+- ✅ Full Lavalink v4 REST API and WebSocket support
+- ✅ 8 advanced audio filters (Karaoke, Timescale, Tremolo, Vibrato, etc.)
+- ✅ Extended search platforms (Spotify, Apple Music, Deezer, Yandex)
+- ✅ Version switching (`restVersion` option for v3/v4 compatibility)
+- ✅ Enhanced player statistics (ping, uptime tracking)
+- ✅ Modern TypeScript 5.x support
+- ✅ Updated dependencies (Node 18+, undici 6+)
+
+### Migration from Original
+If you're migrating from MenuDocs/erela.js v2.x:
+1. Update Node.js to 18+
+2. Update Lavalink to v4+
+3. Install this fork: `npm install ryxu-xo/erela.js`
+4. Optional: Add `restVersion: "v4"` to your config
+5. Check [MIGRATION.md](./MIGRATION.md) for detailed guide
 
 ## 💡 Tips
 
