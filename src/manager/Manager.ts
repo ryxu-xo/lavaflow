@@ -70,7 +70,7 @@ export class Manager extends LavalinkEventEmitter {
       clientId: options.clientId ?? '',
       shards: options.shards ?? 1,
       autoPlay: options.autoPlay ?? true,
-      defaultSearchPlatform: options.defaultSearchPlatform ?? 'ytsearch',
+      defaultSearchPlatform: options.defaultSearchPlatform ?? 'spsearch',
       debug: options.debug ?? false,
     };
 
@@ -199,7 +199,7 @@ export class Manager extends LavalinkEventEmitter {
     }
 
     const node = this.getBestNode();
-    const player = new Player(options, node, this, this.options.autoPlay);
+    const player = new Player(options, node, this, this.options.autoPlay, this.options.defaultSearchPlatform);
 
     this.players.set(options.guildId, player);
     this.emit('playerCreate', player);

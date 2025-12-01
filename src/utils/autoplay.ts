@@ -162,113 +162,64 @@ export class AutoPlay {
   }
 
   /**
-   * Spotify AutoPlay - Converts to YouTube, gets recommendations, converts back
+   * Spotify AutoPlay - Search for artist tracks and pick a random one
    */
   private async handleSpotify(player: Player, previousTrack: Track): Promise<boolean> {
-    // Step 1: Search for the Spotify track on YouTube
-    const ytQuery = `${previousTrack.info.title} ${previousTrack.info.author} official`;
-    const ytResult = await player.search(ytQuery, 'ytsearch');
+    const title = previousTrack.info.title;
+    const artist = previousTrack.info.author;
 
-    if (ytResult.loadType === 'error' || ytResult.loadType === 'empty') {
+    if (!title || !artist) {
+      player['eventEmitter'].emit('debug', '[AutoPlay] Missing title or artist for Spotify track');
       return false;
     }
 
-    let ytTrack: Track | null = null;
-    if (ytResult.loadType === 'search' && ytResult.data.length > 0) {
-      ytTrack = ytResult.data[0];
-    } else if (ytResult.loadType === 'track') {
-      ytTrack = ytResult.data;
-    }
+    // Step 1: Search for matching artist on Spotify
+    const artistResult = await player.search(`${artist}`, 'spsearch');
 
-    if (!ytTrack || !ytTrack.info.identifier) {
+    if (artistResult.loadType === 'empty' || artistResult.loadType === 'error') {
+      player['eventEmitter'].emit('debug', '[AutoPlay] Spotify artist search failed');
       return false;
     }
 
-    // Step 2: Get YouTube recommendations using RD playlist
-    const rdUrl = `https://www.youtube.com/watch?v=${ytTrack.info.identifier}&list=RD${ytTrack.info.identifier}`;
-    const rdResult = await player.search(rdUrl, 'ytsearch');
+    let artistTracks: Track[] = [];
 
-    if (rdResult.loadType === 'error' || rdResult.loadType === 'empty') {
+    if (artistResult.loadType === 'search') {
+      artistTracks = artistResult.data;
+    } else if (artistResult.loadType === 'track') {
+      artistTracks = [artistResult.data];
+    }
+
+    if (!artistTracks.length) {
+      player['eventEmitter'].emit('debug', '[AutoPlay] No tracks found for artist');
       return false;
     }
 
-    let rdTracks: Track[] = [];
-    if (rdResult.loadType === 'playlist') {
-      rdTracks = rdResult.data.tracks;
-    } else if (rdResult.loadType === 'search') {
-      rdTracks = rdResult.data;
-    }
-
-    if (rdTracks.length === 0) {
-      return false;
-    }
-
-    // Pick a random recommended track
-    const recommendedTrack = rdTracks[Math.floor(Math.random() * rdTracks.length)];
-    
-    // Step 3: Parse and clean the track title
-    let songTitle = recommendedTrack.info.title || '';
-    let artist = recommendedTrack.info.author || '';
-
-    // Parse "Artist - Title" format
-    const dashMatch = songTitle.match(/^\s*(.+?)\s*-\s*(.+)\s*$/);
-    if (dashMatch) {
-      const parsedArtist = dashMatch[1].trim();
-      const parsedTitle = dashMatch[2].trim();
-      if (parsedArtist && parsedTitle && parsedArtist.toLowerCase() !== parsedTitle.toLowerCase()) {
-        artist = parsedArtist;
-        songTitle = parsedTitle;
-      }
-    }
-
-    // Clean up title - remove noise
-    songTitle = songTitle.replace(/\s*[\[(][^\])]+[\])]/g, '').trim();
-    songTitle = songTitle.replace(/\b(official\s+music\s+video|official\s+video|official|music\s+video|lyrics?|audio|hd|mv|clip)\b/gi, '').trim();
-    
-    if (songTitle.includes('|') || songTitle.includes(':')) {
-      songTitle = songTitle.split(/\||:/)[0].trim();
-    }
-    
-    songTitle = songTitle.replace(/\s{2,}/g, ' ');
-
-    // Step 4: Search for the track on YouTube (since Spotify requires plugin)
-    const finalQuery = `${songTitle} ${artist}`.trim();
-    const finalResult = await player.search(finalQuery, 'ytsearch');
-
-    if (finalResult.loadType === 'error' || finalResult.loadType === 'empty') {
-      return false;
-    }
-
-    let finalTracks: Track[] = [];
-    if (finalResult.loadType === 'search') {
-      finalTracks = finalResult.data;
-    } else if (finalResult.loadType === 'track') {
-      finalTracks = [finalResult.data];
-    }
-
-    // Filter valid tracks (duration >= 60s, not played before)
-    let validTracks = finalTracks.filter(track => {
-      const duration = track.info.length || 0;
-      const trackId = track.info.identifier || track.info.uri;
-      return duration >= 60000 && trackId && !this.playedIdentifiers.has(trackId);
+    // Filter out previously played Spotify tracks
+    let available = artistTracks.filter(t => {
+      const id = t.info.identifier || t.info.uri;
+      return id && !this.playedIdentifiers.has(id);
     });
 
-    if (validTracks.length === 0) {
-      validTracks = finalTracks.filter(track => {
-        const duration = track.info.length || 0;
-        return duration >= 60000;
-      });
+    if (!available.length) {
+      available = artistTracks;
+      player['eventEmitter'].emit('debug', '[AutoPlay] All artist tracks played, resetting filter');
     }
 
-    if (validTracks.length === 0) {
+    if (!available.length) {
       return false;
     }
 
-    const track = validTracks[0]; // Use the most relevant result
-    player.addTrack(track);
+    // Pick a random Spotify track
+    const randomTrack = available[Math.floor(Math.random() * available.length)];
+
+    player.addTrack(randomTrack);
     await player.play();
-    
-    player['eventEmitter'].emit('debug', `[AutoPlay] Added recommended track: ${track.info.title}`);
+
+    player['eventEmitter'].emit(
+      'debug',
+      `[AutoPlay] Added Spotify recommended track: ${randomTrack.info.title}`
+    );
+
     return true;
   }
 

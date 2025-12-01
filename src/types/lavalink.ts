@@ -449,7 +449,7 @@ export interface ManagerOptions {
   /** Auto-play next track in queue */
   autoPlay?: boolean;
   /** Default search platform */
-  defaultSearchPlatform?: 'ytsearch' | 'ytmsearch' | 'scsearch';
+  defaultSearchPlatform?: 'ytsearch' | 'ytmsearch' | 'scsearch' | 'spsearch' | 'amsearch';
   /** Enable debug logging */
   debug?: boolean;
 }

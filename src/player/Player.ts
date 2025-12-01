@@ -55,6 +55,7 @@ export class Player {
   private autoPlayEngine: AutoPlay;
   private eventEmitter: LavalinkEventEmitter;
   private autoPlay: boolean;
+  private defaultSearchPlatform: SearchPlatformType;
   // Configuration flags (not currently used directly; kept for future use)
   private readonly selfDeafen: boolean;
   private readonly selfMute: boolean;
@@ -65,7 +66,8 @@ export class Player {
     options: PlayerOptions,
     node: Node,
     eventEmitter: LavalinkEventEmitter,
-    autoPlay: boolean = true
+    autoPlay: boolean = true,
+    defaultSearchPlatform: SearchPlatformType = 'ytsearch'
   ) {
     this.guildId = options.guildId;
     this.voiceChannelId = options.voiceChannelId;
@@ -77,6 +79,7 @@ export class Player {
     this.node = node;
     this.eventEmitter = eventEmitter;
     this.autoPlay = autoPlay;
+    this.defaultSearchPlatform = defaultSearchPlatform;
     this.filterBuilder = new FilterBuilder(this);
     this.autoPlayEngine = new AutoPlay();
   }
@@ -423,11 +426,13 @@ export class Player {
    */
   public async search(
     query: string,
-    platform: SearchPlatformType = 'ytsearch'
+    platform?: SearchPlatformType
   ): Promise<LoadResult> {
     // If query is a URL, don't add search prefix
     const isUrl = /^https?:\/\//.test(query);
-    const identifier = isUrl ? query : `${platform}:${query}`;
+    const searchPlatform = platform ?? this.defaultSearchPlatform;
+    const identifier = isUrl ? query : `${searchPlatform}:${query}`;
+    this.eventEmitter.emit('debug', `Searching: ${identifier}`);
     return this.node.loadTracks(identifier);
   }
 
