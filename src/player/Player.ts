@@ -40,6 +40,16 @@ export class Player {
 
   public queue: Track[] = [];
   public previousTracks: Track[] = [];
+  public history: Track[] = [];
+
+  // Loop modes
+  public loopMode: 'off' | 'track' | 'queue' = 'off';
+  
+  // Crossfade settings
+  public crossfadeDuration: number = 0; // ms
+  
+  // Volume normalization
+  public volumeNormalization: boolean = false;
 
   private filterBuilder: FilterBuilder;
   private autoPlayEngine: AutoPlay;
@@ -49,6 +59,7 @@ export class Player {
   private readonly selfDeafen: boolean;
   private readonly selfMute: boolean;
   private positionUpdateInterval: NodeJS.Timeout | null = null;
+  private historyMaxSize: number = 50;
 
   constructor(
     options: PlayerOptions,
@@ -250,6 +261,123 @@ export class Player {
   }
 
   /**
+   * Set loop mode
+   */
+  public setLoopMode(mode: 'off' | 'track' | 'queue'): void {
+    this.loopMode = mode;
+    this.eventEmitter.emit('debug', `Loop mode set to: ${mode}`);
+  }
+
+  /**
+   * Get playback history
+   */
+  public getHistory(): Track[] {
+    return [...this.history];
+  }
+
+  /**
+   * Clear playback history
+   */
+  public clearHistory(): void {
+    this.history = [];
+  }
+
+  /**
+   * Set crossfade duration
+   */
+  public setCrossfade(duration: number): void {
+    this.crossfadeDuration = Math.max(0, duration);
+    this.eventEmitter.emit('debug', `Crossfade duration set to: ${duration}ms`);
+  }
+
+  /**
+   * Enable/disable volume normalization
+   */
+  public setVolumeNormalization(enabled: boolean): void {
+    this.volumeNormalization = enabled;
+    this.eventEmitter.emit('debug', `Volume normalization ${enabled ? 'enabled' : 'disabled'}`);
+  }
+
+  /**
+   * Set playback speed (independent of pitch)
+   */
+  public async setSpeed(speed: number): Promise<void> {
+    if (speed < 0.25 || speed > 3.0) {
+      throw new Error('Speed must be between 0.25 and 3.0');
+    }
+    await this.node.updatePlayer(this.guildId, {
+      filters: { timescale: { speed, pitch: 1.0, rate: 1.0 } }
+    });
+    this.eventEmitter.emit('debug', `Speed set to: ${speed}x`);
+  }
+
+  /**
+   * Set playback pitch (independent of speed)
+   */
+  public async setPitch(pitch: number): Promise<void> {
+    if (pitch < 0.25 || pitch > 3.0) {
+      throw new Error('Pitch must be between 0.25 and 3.0');
+    }
+    await this.node.updatePlayer(this.guildId, {
+      filters: { timescale: { speed: 1.0, pitch, rate: 1.0 } }
+    });
+    this.eventEmitter.emit('debug', `Pitch set to: ${pitch}x`);
+  }
+
+  /**
+   * Set both speed and pitch
+   */
+  public async setSpeedAndPitch(speed: number, pitch: number): Promise<void> {
+    if (speed < 0.25 || speed > 3.0 || pitch < 0.25 || pitch > 3.0) {
+      throw new Error('Speed and pitch must be between 0.25 and 3.0');
+    }
+    await this.node.updatePlayer(this.guildId, {
+      filters: { timescale: { speed, pitch, rate: 1.0 } }
+    });
+    this.eventEmitter.emit('debug', `Speed set to: ${speed}x, Pitch set to: ${pitch}x`);
+  }
+
+  /**
+   * Save queue to JSON for persistence
+   */
+  public saveQueue(): string {
+    return JSON.stringify({
+      queue: this.queue,
+      currentTrack: this.track,
+      position: this.position,
+      volume: this.volume,
+      loopMode: this.loopMode,
+      paused: this.paused,
+    });
+  }
+
+  /**
+   * Restore queue from JSON
+   */
+  public async restoreQueue(data: string): Promise<void> {
+    try {
+      const saved = JSON.parse(data);
+      this.queue = saved.queue || [];
+      this.loopMode = saved.loopMode || 'off';
+      
+      if (saved.volume !== undefined) {
+        await this.setVolume(saved.volume);
+      }
+      
+      if (saved.currentTrack) {
+        await this.play(saved.currentTrack, { startTime: saved.position || 0 });
+        if (saved.paused) {
+          await this.pause();
+        }
+      }
+      
+      this.eventEmitter.emit('debug', 'Queue restored from save');
+    } catch (error) {
+      throw new Error(`Failed to restore queue: ${error}`);
+    }
+  }
+
+  /**
    * Shuffle the queue
    */
   public shuffleQueue(): void {
@@ -416,6 +544,12 @@ export class Player {
    */
   public async handleTrackEnd(reason: string): Promise<void> {
     if (this.track) {
+      // Add to history
+      this.history.push(this.track);
+      if (this.history.length > this.historyMaxSize) {
+        this.history.shift();
+      }
+      
       this.previousTracks.push(this.track);
       // Keep only last 10 previous tracks
       if (this.previousTracks.length > 10) {
@@ -424,12 +558,25 @@ export class Player {
     }
 
     const previousTrack = this.track;
+
+    // Debug logging
+    this.eventEmitter.emit('debug', `Track ended: reason=${reason}, loopMode=${this.loopMode}, autoPlay=${this.autoPlay}, queueLength=${this.queue.length}`);
+
+    // Handle loop modes
+    if (reason === 'finished' && this.loopMode === 'track' && previousTrack) {
+      this.eventEmitter.emit('debug', 'Looping current track');
+      await this.play(previousTrack);
+      return;
+    }
+
+    if (reason === 'finished' && this.loopMode === 'queue' && previousTrack) {
+      // Add current track back to end of queue
+      this.queue.push(previousTrack);
+    }
+
     this.track = null;
     this.position = 0;
     this.clearPositionUpdate();
-
-    // Debug logging
-    this.eventEmitter.emit('debug', `Track ended: reason=${reason}, autoPlay=${this.autoPlay}, queueLength=${this.queue.length}`);
 
     // Auto-play next track from queue if available
     if (reason === 'finished' && this.queue.length > 0) {

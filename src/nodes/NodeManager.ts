@@ -111,22 +111,38 @@ export class NodeManager {
    * Get the best node based on penalty calculation
    * This is the core load balancing logic
    */
-  public getBestNode(): Node {
+  public getBestNode(voiceRegion?: string): Node {
     const connectedNodes = this.getConnectedNodes();
 
     if (connectedNodes.length === 0) {
       throw new Error('No connected nodes available');
     }
 
-    // Use custom penalty calculator if provided
+    // If voice region optimization is requested, prefer nodes in the same region
+    if (voiceRegion) {
+      const regionalNodes = connectedNodes.filter(node => 
+        node.options.region && this.matchesRegion(node.options.region, voiceRegion)
+      );
+      
+      if (regionalNodes.length > 0) {
+        return this.selectBestFromNodes(regionalNodes);
+      }
+    }
+
+    return this.selectBestFromNodes(connectedNodes);
+  }
+
+  /**
+   * Select best node from a list based on penalty
+   */
+  private selectBestFromNodes(nodes: Node[]): Node {
     const penaltyFn = this.customPenaltyCalculator || ((node: Node) => node.getPenalty());
 
-    // Find node with lowest penalty
-    let bestNode = connectedNodes[0];
+    let bestNode = nodes[0];
     let lowestPenalty = penaltyFn(bestNode);
 
-    for (let i = 1; i < connectedNodes.length; i++) {
-      const node = connectedNodes[i];
+    for (let i = 1; i < nodes.length; i++) {
+      const node = nodes[i];
       const penalty = penaltyFn(node);
 
       if (penalty < lowestPenalty) {
@@ -136,6 +152,16 @@ export class NodeManager {
     }
 
     return bestNode;
+  }
+
+  /**
+   * Check if node region matches voice region
+   */
+  private matchesRegion(nodeRegion: string, voiceRegion: string): boolean {
+    // Normalize regions (e.g., us-west, uswest, us_west all match)
+    const normalize = (r: string) => r.toLowerCase().replace(/[-_]/g, '');
+    return normalize(nodeRegion).includes(normalize(voiceRegion)) || 
+           normalize(voiceRegion).includes(normalize(nodeRegion));
   }
 
   /**

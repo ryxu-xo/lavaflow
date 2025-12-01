@@ -68,11 +68,13 @@ export class Node {
       port: options.port,
       password: options.password,
       secure: options.secure ?? false,
-      resumeKey: options.resumeKey ?? `lava.ts::${options.name}`,
+      resumeKey: options.resumeKey ?? 'lava.ts',
       resumeTimeout: options.resumeTimeout ?? 60,
-      maxReconnectAttempts: options.maxReconnectAttempts ?? 0,
-      reconnectDelay: options.reconnectDelay ?? 1000,
-    };
+      maxReconnectAttempts: options.maxReconnectAttempts ?? 3,
+      reconnectDelay: options.reconnectDelay ?? 5000,
+      region: options.region,
+      retryStrategy: options.retryStrategy ?? 'exponential',
+    } as Required<NodeOptions>;
 
     this.http = new HttpClient({
       host: this.options.host,

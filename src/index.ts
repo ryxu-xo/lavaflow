@@ -33,6 +33,8 @@ export type { RequestOptions, RequestConfig } from './utils/http';
 export { ExponentialBackoff, sleep, withBackoff } from './utils/backoff';
 export type { BackoffOptions } from './utils/backoff';
 export { AutoPlay } from './utils/autoplay';
+export { MetadataCache } from './utils/MetadataCache';
+export { FavoritesManager } from './utils/FavoritesManager';
 
 // Types
 export type {

@@ -24,6 +24,10 @@ export interface NodeOptions {
   maxReconnectAttempts?: number;
   /** Base reconnection delay in milliseconds */
   reconnectDelay?: number;
+  /** Geographic region for voice optimization (e.g., 'us-west', 'eu-central') */
+  region?: string;
+  /** Retry strategy for rate limiting */
+  retryStrategy?: 'exponential' | 'linear' | 'none';
 }
 
 export interface NodeStats {

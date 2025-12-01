@@ -18,6 +18,16 @@ import type {
   LoadResult,
 } from '../types/lavalink';
 
+/**
+ * Plugin interface for lava.ts
+ */
+export interface LavaPlugin {
+  name: string;
+  onLoad?(manager: Manager): void | Promise<void>;
+  onUnload?(manager: Manager): void | Promise<void>;
+  onEvent?(event: string, ...args: any[]): void;
+}
+
 export class Manager extends LavalinkEventEmitter {
   public readonly options: Required<ManagerOptions>;
   private nodeManager: NodeManager;
@@ -26,6 +36,30 @@ export class Manager extends LavalinkEventEmitter {
   private clientId: string | null = null;
   private initialized: boolean = false;
   private debugEnabled: boolean = false;
+  private plugins: LavaPlugin[] = [];
+  /**
+   * Register a plugin
+   */
+  public use(plugin: LavaPlugin): void {
+    this.plugins.push(plugin);
+    if (plugin.onLoad) {
+      plugin.onLoad(this);
+    }
+    this.emit('debug', `Plugin loaded: ${plugin.name}`);
+  }
+
+  /**
+   * Unload all plugins
+   */
+  public unloadPlugins(): void {
+    for (const plugin of this.plugins) {
+      if (plugin.onUnload) {
+        plugin.onUnload(this);
+      }
+      this.emit('debug', `Plugin unloaded: ${plugin.name}`);
+    }
+    this.plugins = [];
+  }
 
   constructor(options: ManagerOptions) {
     super();
@@ -50,6 +84,12 @@ export class Manager extends LavalinkEventEmitter {
   public emit<K extends keyof ManagerEvents>(event: K, ...args: ManagerEvents[K]): boolean {
     if (event === 'debug' && !this.debugEnabled) {
       return false;
+    }
+    // Call plugin event hooks
+    for (const plugin of this.plugins) {
+      if (plugin.onEvent) {
+        try { plugin.onEvent(event as string, ...args); } catch {}
+      }
     }
     return super.emit(event, ...args);
   }
@@ -335,6 +375,7 @@ export class Manager extends LavalinkEventEmitter {
     this.voiceForwarder?.clearAllVoiceStates();
 
     this.initialized = false;
+    this.unloadPlugins();
     this.emit('debug', 'Manager destroyed');
   }
 
