@@ -68,7 +68,7 @@ export class Node {
       port: options.port,
       password: options.password,
       secure: options.secure ?? false,
-      resumeKey: options.resumeKey ?? 'lava.ts',
+      resumeKey: options.resumeKey ?? 'lavaflow',
       resumeTimeout: options.resumeTimeout ?? 60,
       maxReconnectAttempts: options.maxReconnectAttempts ?? 3,
       reconnectDelay: options.reconnectDelay ?? 5000,
@@ -108,7 +108,7 @@ export class Node {
       headers: {
         'Authorization': this.options.password,
         'User-Id': clientId,
-        'Client-Name': 'lava.ts/1.0.0',
+        'Client-Name': 'lavaflow/1.0.0',
         'Resume-Key': this.options.resumeKey,
       },
     });

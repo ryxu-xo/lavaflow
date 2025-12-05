@@ -19,7 +19,7 @@ import type {
 } from '../types/lavalink';
 
 /**
- * Plugin interface for lava.ts
+ * Plugin interface for lavaflow
  */
 export interface LavaPlugin {
   name: string;

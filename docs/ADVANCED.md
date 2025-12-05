@@ -1,6 +1,6 @@
 # Advanced Usage Guide
 
-This guide covers advanced features and patterns for using Lava.ts.
+This guide covers advanced features and patterns for using lavaflow.
 
 ## Table of Contents
 
@@ -15,12 +15,12 @@ This guide covers advanced features and patterns for using Lava.ts.
 
 ## Plugin System
 
-Lava.ts includes a powerful plugin system for extending functionality:
+lavaflow includes a powerful plugin system for extending functionality:
 
 ### Creating a Plugin
 
 ```typescript
-import { LavaPlugin, Manager } from 'lava.ts';
+import { LavaPlugin, Manager } from 'lavaflow';
 
 const myPlugin: LavaPlugin = {
   name: 'MyPlugin',
@@ -101,7 +101,7 @@ manager.use({
 Implement your own penalty calculation for custom load balancing strategies:
 
 ```typescript
-import { Manager, NodeManager } from 'lava.ts';
+import { Manager, NodeManager } from 'lavaflow';
 
 const manager = new Manager({ /* ... */ });
 const nodeManager = NodeManager.getInstance();
@@ -161,7 +161,7 @@ await player.filters()
 ### Custom Equalizer Profiles
 
 ```typescript
-import { FilterBuilder, EqualizerBand } from 'lava.ts';
+import { FilterBuilder, EqualizerBand } from 'lavaflow';
 
 // Create custom equalizer profile
 const customEQ: EqualizerBand[] = [
@@ -369,7 +369,7 @@ const manager = new Manager({
 ### Comprehensive Error Handling
 
 ```typescript
-import { Manager, Events } from 'lava.ts';
+import { Manager, Events } from 'lavaflow';
 
 const manager = new Manager({ /* ... */ });
 
@@ -448,7 +448,7 @@ async function playCommand(query: string, guildId: string) {
 ### Implementing Custom Event Logic
 
 ```typescript
-import { Manager, Events, Track, Player } from 'lava.ts';
+import { Manager, Events, Track, Player } from 'lavaflow';
 
 class EnhancedManager extends Manager {
   private trackHistory: Map<string, Track[]> = new Map();
@@ -607,4 +607,4 @@ setInterval(async () => {
 - Verify source managers are configured in Lavalink
 - Test with different search queries/URLs
 
-For more help, check the [GitHub Issues](https://github.com/yourusername/lava.ts/issues).
+For more help, check the [GitHub Issues](https://github.com/yourusername/lavaflow/issues).

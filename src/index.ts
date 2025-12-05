@@ -1,5 +1,5 @@
 /**
- * Lava.ts - Professional-grade Lavalink v4 client library
+ * lavaflow - Professional-grade Lavalink v4 client library
  * Main entry point for the library
  */
 

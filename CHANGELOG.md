@@ -173,6 +173,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Minor improvements
 - Dependency updates
 
-[Unreleased]: https://github.com/yourusername/lava.ts/compare/v1.0.0...HEAD
-[1.0.0]: https://github.com/yourusername/lava.ts/releases/tag/v1.0.0
-[0.1.0]: https://github.com/yourusername/lava.ts/releases/tag/v0.1.0
+[Unreleased]: https://github.com/ryxu-xo/lavaflow/compare/v1.0.0...HEAD
+[1.0.0]: https://github.com/ryxu-xo/lavaflow/releases/tag/v1.0.0
+[0.1.0]: https://github.com/ryxu-xo/lavaflow/releases/tag/v0.1.0

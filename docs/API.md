@@ -1,6 +1,6 @@
 # API Reference
 
-Complete API documentation for Lava.ts.
+Complete API documentation for lavaflow.
 
 ## Table of Contents
 
@@ -345,7 +345,7 @@ Create a copy of this filter builder.
 Event names exported from the `Events` constant:
 
 ```typescript
-import { Events } from 'lava.ts';
+import { Events } from 'lavaflow';
 
 // Node events
 Events.NodeConnect
@@ -523,7 +523,7 @@ type SearchPlatformType =
 ### Basic Usage
 
 ```typescript
-import { Manager } from 'lava.ts';
+import { Manager } from 'lavaflow';
 
 const manager = new Manager({
   nodes: [{
