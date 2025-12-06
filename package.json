@@ -1,6 +1,6 @@
 {
   "name": "lavaflow",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "Professional-grade Lavalink v4 client library for Node.js with TypeScript-first design",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
