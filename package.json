@@ -1,6 +1,6 @@
 {
   "name": "lavaflow",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Professional-grade Lavalink v4 client library for Node.js with TypeScript-first design",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -34,7 +34,6 @@
     "node": ">=16.0.0"
   },
   "dependencies": {
-    "discord.js-selfbot-v13": "github:aiko-chan-ai/discord.js-selfbot-v13",
     "ws": "^8.14.2"
   },
   "devDependencies": {
