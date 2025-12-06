@@ -1,6 +1,6 @@
 {
   "name": "lavaflow",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Professional-grade Lavalink v4 client library for Node.js with TypeScript-first design",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -24,12 +24,12 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/ryxu-xo/lava.ts"
+    "url": "https://github.com/ryxu-xo/lavaflow"
   },
   "bugs": {
-    "url": "https://github.com/ryxu-xo/lava.ts/issues"
+    "url": "https://github.com/ryxu-xo/lavaflow/issues"
   },
-  "homepage": "https://github.com/ryxu-xo/lava.ts#readme",
+  "homepage": "https://github.com/ryxu-xo/lavaflow#readme",
   "engines": {
     "node": ">=16.0.0"
   },
