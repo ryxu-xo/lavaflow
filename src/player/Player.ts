@@ -547,41 +547,52 @@ export class Player {
   /**
    * Handle track end (called by Manager)
    */
-  public async handleTrackEnd(reason: string): Promise<void> {
-    if (this.track) {
-      // Add to history
-      this.history.push(this.track);
-      if (this.history.length > this.historyMaxSize) {
-        this.history.shift();
-      }
-      
-      this.previousTracks.push(this.track);
-      // Keep only last 10 previous tracks
-      if (this.previousTracks.length > 10) {
-        this.previousTracks.shift();
-      }
-    }
+  public async handleTrackEnd(track: Track | null, reason: string): Promise<void> {
+    const endedTrack = track ?? this.track;
 
-    const previousTrack = this.track;
-
-    // Debug logging
-    this.eventEmitter.emit('debug', `Track ended: reason=${reason}, loopMode=${this.loopMode}, autoPlay=${this.autoPlay}, queueLength=${this.queue.length}`);
-
-    // Handle loop modes
-    if (reason === 'finished' && this.loopMode === 'track' && previousTrack) {
-      this.eventEmitter.emit('debug', 'Looping current track');
-      await this.play(previousTrack);
+    if (!endedTrack) {
+      this.eventEmitter.emit('debug', `Track end received with no track reference (reason=${reason})`);
       return;
     }
 
-    if (reason === 'finished' && this.loopMode === 'queue' && previousTrack) {
-      // Add current track back to end of queue
-      this.queue.push(previousTrack);
+    const isCurrentTrack = this.track?.encoded === endedTrack.encoded;
+
+    // Add to history and previous lists based on the track that actually ended
+    this.history.push(endedTrack);
+    if (this.history.length > this.historyMaxSize) {
+      this.history.shift();
     }
 
-    this.track = null;
-    this.position = 0;
-    this.clearPositionUpdate();
+    this.previousTracks.push(endedTrack);
+    // Keep only last 10 previous tracks
+    if (this.previousTracks.length > 10) {
+      this.previousTracks.shift();
+    }
+
+    // Debug logging
+    this.eventEmitter.emit(
+      'debug',
+      `Track ended: title=${endedTrack.info.title}, reason=${reason}, loopMode=${this.loopMode}, autoPlay=${this.autoPlay}, queueLength=${this.queue.length}`
+    );
+
+    // If this end event corresponds to the currently tracked song, clear local state
+    if (isCurrentTrack) {
+      this.track = null;
+      this.position = 0;
+      this.clearPositionUpdate();
+    }
+
+    // Handle loop modes
+    if (reason === 'finished' && this.loopMode === 'track') {
+      this.eventEmitter.emit('debug', 'Looping current track');
+      await this.play(endedTrack);
+      return;
+    }
+
+    if (reason === 'finished' && this.loopMode === 'queue') {
+      // Add ended track back to end of queue
+      this.queue.push(endedTrack);
+    }
 
     // Auto-play next track from queue if available
     if (reason === 'finished' && this.queue.length > 0) {
@@ -591,10 +602,10 @@ export class Player {
     }
 
     // If queue is empty and autoPlay is enabled, try to find related tracks
-    if (this.autoPlay && reason === 'finished' && this.queue.length === 0 && previousTrack) {
+    if (this.autoPlay && reason === 'finished' && this.queue.length === 0) {
       this.eventEmitter.emit('debug', 'Queue empty, attempting AutoPlay...');
       try {
-        const success = await this.autoPlayEngine.execute(this, previousTrack);
+        const success = await this.autoPlayEngine.execute(this, endedTrack);
         if (success) {
           this.eventEmitter.emit('debug', 'AutoPlay succeeded, continuing playback');
           return; // AutoPlay added a track and started playing
@@ -605,7 +616,7 @@ export class Player {
       }
     }
 
-    // Only emit queueEnd if queue is still empty after AutoPlay attempt
+    // Only emit queueEnd if queue is still empty after AutoPlay attempt and no current track
     if (this.queue.length === 0 && !this.track) {
       this.eventEmitter.emit('debug', 'Queue is empty, emitting queueEnd');
       this.eventEmitter.emit('queueEnd', this);

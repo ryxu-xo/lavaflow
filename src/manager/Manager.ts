@@ -395,7 +395,7 @@ export class Manager extends LavalinkEventEmitter {
     node.on('onTrackEnd', (event) => {
       const player = this.players.get(event.guildId);
       if (player) {
-        player.handleTrackEnd(event.reason).catch((error) => {
+        player.handleTrackEnd(event.track, event.reason).catch((error) => {
           this.emit('debug', `Error handling track end: ${error.message}`);
         });
         this.emit('trackEnd', player, event.track, event.reason);
