@@ -7,6 +7,7 @@ import type { Track } from '../types/lavalink';
 interface FavoriteTrack {
   track: Track;
   addedAt: number;
+  accessedAt: number; // Track last access for LRU
   addedBy?: string;
 }
 
@@ -22,7 +23,7 @@ export class FavoritesManager {
   }
 
   /**
-   * Add track to user favorites
+   * Add track to user favorites (uses LRU eviction)
    */
   addUserFavorite(userId: string, track: Track): boolean {
     if (!this.userFavorites.has(userId)) {
@@ -31,26 +32,32 @@ export class FavoritesManager {
 
     const favorites = this.userFavorites.get(userId)!;
     
-    // Check if already exists
-    if (favorites.some(f => f.track.encoded === track.encoded)) {
-      return false;
+    // Check if already exists and update access time
+    const existing = favorites.find(f => f.track.encoded === track.encoded);
+    if (existing) {
+      existing.accessedAt = Date.now();
+      return false; // Already exists
     }
 
-    // Check max limit
+    // Check max limit and remove least recently accessed
     if (favorites.length >= this.maxPerUser) {
-      favorites.shift(); // Remove oldest
+      const lruIndex = favorites.reduce((minIdx, f, idx, arr) => 
+        f.accessedAt < arr[minIdx].accessedAt ? idx : minIdx, 0
+      );
+      favorites.splice(lruIndex, 1);
     }
 
     favorites.push({
       track,
       addedAt: Date.now(),
+      accessedAt: Date.now(),
     });
 
     return true;
   }
 
   /**
-   * Add track to guild favorites
+   * Add track to guild favorites (uses LRU eviction)
    */
   addGuildFavorite(guildId: string, track: Track, addedBy?: string): boolean {
     if (!this.guildFavorites.has(guildId)) {
@@ -59,19 +66,25 @@ export class FavoritesManager {
 
     const favorites = this.guildFavorites.get(guildId)!;
     
-    // Check if already exists
-    if (favorites.some(f => f.track.encoded === track.encoded)) {
-      return false;
+    // Check if already exists and update access time
+    const existing = favorites.find(f => f.track.encoded === track.encoded);
+    if (existing) {
+      existing.accessedAt = Date.now();
+      return false; // Already exists
     }
 
-    // Check max limit
+    // Check max limit and remove least recently accessed
     if (favorites.length >= this.maxPerGuild) {
-      favorites.shift(); // Remove oldest
+      const lruIndex = favorites.reduce((minIdx, f, idx, arr) => 
+        f.accessedAt < arr[minIdx].accessedAt ? idx : minIdx, 0
+      );
+      favorites.splice(lruIndex, 1);
     }
 
     favorites.push({
       track,
       addedAt: Date.now(),
+      accessedAt: Date.now(),
       addedBy,
     });
 

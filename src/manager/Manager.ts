@@ -72,6 +72,9 @@ export class Manager extends LavalinkEventEmitter {
       autoPlay: options.autoPlay ?? true,
       defaultSearchPlatform: options.defaultSearchPlatform ?? 'spsearch',
       debug: options.debug ?? false,
+      maxQueueSize: options.maxQueueSize ?? 1000,
+      apiRateLimitDelay: options.apiRateLimitDelay ?? 50,
+      healthCheckInterval: options.healthCheckInterval ?? 60000,
     };
 
     this.debugEnabled = this.options.debug;
@@ -184,6 +187,20 @@ export class Manager extends LavalinkEventEmitter {
     return this.nodeManager.getBestNode();
   }
 
+  /**
+   * Get metrics for all nodes
+   */
+  public getNodeMetrics() {
+    return this.nodeManager.getNodeMetrics();
+  }
+
+  /**
+   * Get metrics for a specific node
+   */
+  public getNodeMetricsById(name: string) {
+    return this.nodeManager.getNodeMetricsById(name);
+  }
+
   // ==================== Player Management ====================
 
   /**
@@ -199,7 +216,17 @@ export class Manager extends LavalinkEventEmitter {
     }
 
     const node = this.getBestNode();
-    const player = new Player(options, node, this, this.options.autoPlay, this.options.defaultSearchPlatform);
+    const player = new Player(
+      options,
+      node,
+      this,
+      this.options.autoPlay,
+      this.options.defaultSearchPlatform,
+      {
+        maxQueueSize: this.options.maxQueueSize,
+        apiRateLimitDelay: this.options.apiRateLimitDelay,
+      }
+    );
 
     this.players.set(options.guildId, player);
     this.emit('playerCreate', player);

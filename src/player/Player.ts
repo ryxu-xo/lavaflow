@@ -51,9 +51,30 @@ export class Player {
   // Volume normalization
   public volumeNormalization: boolean = false;
 
+  // Queue size limits
+  public maxQueueSize: number = 1000;
+  
+  // Rate limiting for API calls (Lavalink can handle ~10/s, but being conservative)
+  public apiRateLimitDelay: number = 50; // ms between searches - reduced from 100ms for faster playback
+  private lastSearchTime: number = 0;
+
+  // Performance metrics
+  private tracksPlayed: number = 0;
+  private errorCount: number = 0;
+  private totalPlaybackTime: number = 0;
+  private sessionStartTime: number = Date.now();
+
+  // History stats
+  private skippedTracks: number = 0;
+  private repeatTracks: Set<string> = new Set();
+
+  // Hooks
+  private beforePlayHook: ((track: Track) => Promise<void>) | null = null;
+  private afterPlayHook: ((track: Track) => Promise<void>) | null = null;
+
   private filterBuilder: FilterBuilder;
   private autoPlayEngine: AutoPlay;
-  private eventEmitter: LavalinkEventEmitter;
+  public eventEmitter: LavalinkEventEmitter;
   private autoPlay: boolean;
   private defaultSearchPlatform: SearchPlatformType;
   // Configuration flags (not currently used directly; kept for future use)
@@ -67,7 +88,11 @@ export class Player {
     node: Node,
     eventEmitter: LavalinkEventEmitter,
     autoPlay: boolean = true,
-    defaultSearchPlatform: SearchPlatformType = 'ytsearch'
+    defaultSearchPlatform: SearchPlatformType = 'ytsearch',
+    config?: {
+      maxQueueSize?: number;
+      apiRateLimitDelay?: number;
+    }
   ) {
     this.guildId = options.guildId;
     this.voiceChannelId = options.voiceChannelId;
@@ -76,12 +101,154 @@ export class Player {
     this.selfDeafen = options.selfDeafen ?? false;
     this.selfMute = options.selfMute ?? false;
 
+    // Apply configuration if provided
+    if (config?.maxQueueSize !== undefined) {
+      this.maxQueueSize = config.maxQueueSize;
+    }
+    if (config?.apiRateLimitDelay !== undefined) {
+      this.apiRateLimitDelay = config.apiRateLimitDelay;
+    }
+
     this.node = node;
     this.eventEmitter = eventEmitter;
     this.autoPlay = autoPlay;
     this.defaultSearchPlatform = defaultSearchPlatform;
     this.filterBuilder = new FilterBuilder(this);
     this.autoPlayEngine = new AutoPlay();
+  }
+
+  // ==================== Event Emission ====================
+
+  /**
+   * Emit a debug event
+   */
+  public emit(event: string, message: string): void {
+    this.eventEmitter.emit(event as any, message);
+  }
+
+  // ==================== Performance Metrics ====================
+
+  /**
+   * Get performance metrics for this player session
+   */
+  public getMetrics(): {
+    tracksPlayed: number;
+    errorCount: number;
+    totalPlaybackTime: number;
+    sessionDuration: number;
+    uptime: number;
+    avgTracksPerMinute: number;
+  } {
+    const now = Date.now();
+    const sessionDuration = now - this.sessionStartTime;
+    const minutes = sessionDuration / 60000;
+
+    return {
+      tracksPlayed: this.tracksPlayed,
+      errorCount: this.errorCount,
+      totalPlaybackTime: this.totalPlaybackTime,
+      sessionDuration,
+      uptime: sessionDuration,
+      avgTracksPerMinute: this.tracksPlayed / Math.max(1, minutes),
+    };
+  }
+
+  /**
+   * Reset performance metrics
+   */
+  public resetMetrics(): void {
+    this.tracksPlayed = 0;
+    this.errorCount = 0;
+    this.totalPlaybackTime = 0;
+    this.sessionStartTime = Date.now();
+  }
+
+  /**
+   * Increment track played counter
+   */
+  private incrementTracksPlayed(): void {
+    this.tracksPlayed++;
+  }
+
+  // ==================== Hooks ====================
+
+  /**
+   * Register a beforePlay hook (runs before a track starts playing)
+   */
+  public onBeforePlay(hook: (track: Track) => Promise<void>): void {
+    this.beforePlayHook = hook;
+    this.eventEmitter.emit('debug', '✓ beforePlay hook registered');
+  }
+
+  /**
+   * Register an afterPlay hook (runs after a track starts playing)
+   */
+  public onAfterPlay(hook: (track: Track) => Promise<void>): void {
+    this.afterPlayHook = hook;
+    this.eventEmitter.emit('debug', '✓ afterPlay hook registered');
+  }
+
+  /**
+   * Clear all hooks
+   */
+  public clearHooks(): void {
+    this.beforePlayHook = null;
+    this.afterPlayHook = null;
+  }
+
+  // ==================== History ====================
+
+  /**
+   * Get playback history
+   */
+  public getHistory(): Track[] {
+    return [...this.history];
+  }
+
+  /**
+   * Get history stats (skips, repeats, unique tracks)
+   */
+  public getHistoryStats(): {
+    totalPlayed: number;
+    skipped: number;
+    unique: number;
+    repeated: number;
+  } {
+    return {
+      totalPlayed: this.history.length,
+      skipped: this.skippedTracks,
+      unique: new Set(this.history.map(t => t.encoded)).size,
+      repeated: this.repeatTracks.size,
+    };
+  }
+
+  /**
+   * Clear playback history and stats
+   */
+  public clearHistory(): void {
+    this.history = [];
+    this.skippedTracks = 0;
+    this.repeatTracks.clear();
+  }
+
+  /**
+   * Increment error counter
+   */
+  private incrementErrorCount(): void {
+    this.errorCount++;
+  }
+
+  /**
+   * Configure API rate limit delay
+   * Lower values = faster searches but more server load
+   * Default is 50ms. Lavalink can typically handle 10+ requests/sec
+   */
+  public setApiRateLimit(delayMs: number): void {
+    if (delayMs < 0) {
+      throw new Error('Rate limit delay cannot be negative');
+    }
+    this.apiRateLimitDelay = delayMs;
+    this.eventEmitter.emit('debug', `API rate limit set to ${delayMs}ms`);
   }
 
   // ==================== Connection Management ====================
@@ -123,32 +290,69 @@ export class Player {
    * Play a track
    */
   public async play(track?: Track, options?: { startTime?: number; endTime?: number; noReplace?: boolean }): Promise<void> {
-    const trackToPlay = track || this.queue.shift();
-    
-    if (!trackToPlay) {
-      throw new Error('No track provided and queue is empty');
+    try {
+      const trackToPlay = track || this.queue.shift();
+      
+      if (!trackToPlay) {
+        throw new Error('No track provided and queue is empty');
+      }
+
+      // Check if node is connected before attempting to play
+      if (!this.node.isConnected()) {
+        this.eventEmitter.emit('debug', `⚠ Cannot play track: Node ${this.node.options.name} is not connected`);
+        throw new Error(`Node ${this.node.options.name} is not connected`);
+      }
+
+      this.track = trackToPlay;
+      this.incrementTracksPlayed();
+
+      // Call beforePlay hook
+      if (this.beforePlayHook) {
+        try {
+          await this.beforePlayHook(trackToPlay);
+        } catch (error) {
+          this.eventEmitter.emit('debug', `⚠ beforePlay hook error: ${error instanceof Error ? error.message : 'Unknown'}`);
+        }
+      }
+
+      await this.node.updatePlayer(
+        this.guildId,
+        {
+          encodedTrack: trackToPlay.encoded,
+          position: options?.startTime,
+          endTime: options?.endTime,
+        },
+        options?.noReplace ?? false
+      );
+
+      this.startPositionUpdate();
+      this.eventEmitter.emit('debug', `Playing track: ${trackToPlay.info.title}`);
+
+      // Call afterPlay hook
+      if (this.afterPlayHook) {
+        try {
+          await this.afterPlayHook(trackToPlay);
+        } catch (error) {
+          this.eventEmitter.emit('debug', `⚠ afterPlay hook error: ${error instanceof Error ? error.message : 'Unknown'}`);
+        }
+      }
+    } catch (error) {
+      this.incrementErrorCount();
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      this.eventEmitter.emit('debug', `✗ Error playing track: ${errorMessage}`);
+      throw error;
     }
-
-    this.track = trackToPlay;
-
-    await this.node.updatePlayer(
-      this.guildId,
-      {
-        encodedTrack: trackToPlay.encoded,
-        position: options?.startTime,
-        endTime: options?.endTime,
-      },
-      options?.noReplace ?? false
-    );
-
-    this.startPositionUpdate();
-    this.eventEmitter.emit('debug', `Playing track: ${trackToPlay.info.title}`);
   }
 
   /**
    * Pause playback
    */
   public async pause(pause: boolean = true): Promise<void> {
+    if (!this.node.isConnected()) {
+      const action = pause ? 'pause' : 'resume';
+      this.eventEmitter.emit('debug', `⚠ Cannot ${action}: Node ${this.node.options.name} is not connected`);
+      throw new Error(`Node ${this.node.options.name} is not connected`);
+    }
     await this.node.updatePlayer(this.guildId, { paused: pause });
     this.paused = pause;
     this.eventEmitter.emit('debug', `Player ${pause ? 'paused' : 'resumed'}`);
@@ -165,6 +369,14 @@ export class Player {
    * Stop playback
    */
   public async stop(): Promise<void> {
+    if (!this.node.isConnected()) {
+      this.eventEmitter.emit('debug', `⚠ Cannot stop: Node ${this.node.options.name} is not connected`);
+      // Still update local state even if node is disconnected
+      this.track = null;
+      this.position = 0;
+      this.clearPositionUpdate();
+      return;
+    }
     await this.node.updatePlayer(this.guildId, { encodedTrack: null });
     this.track = null;
     this.position = 0;
@@ -184,6 +396,11 @@ export class Player {
       throw new Error('Position out of bounds');
     }
 
+    if (!this.node.isConnected()) {
+      this.eventEmitter.emit('debug', `⚠ Cannot seek: Node ${this.node.options.name} is not connected`);
+      throw new Error(`Node ${this.node.options.name} is not connected`);
+    }
+
     await this.node.updatePlayer(this.guildId, { position });
     this.position = position;
     this.eventEmitter.emit('debug', `Seeked to position: ${position}ms`);
@@ -195,6 +412,11 @@ export class Player {
   public async setVolume(volume: number): Promise<void> {
     if (volume < 0 || volume > 100) {
       throw new Error('Volume must be between 0 and 100');
+    }
+
+    if (!this.node.isConnected()) {
+      this.eventEmitter.emit('debug', `⚠ Cannot set volume: Node ${this.node.options.name} is not connected`);
+      throw new Error(`Node ${this.node.options.name} is not connected`);
     }
 
     // Lavalink v4 accepts volume as 0-1000, but we expose 0-100 for better UX
@@ -234,16 +456,85 @@ export class Player {
 
   /**
    * Add a track to the queue
+   * Returns false if queue is at max size
    */
-  public addTrack(track: Track): void {
+  public addTrack(track: Track): boolean {
+    if (this.queue.length >= this.maxQueueSize) {
+      this.eventEmitter.emit('debug', `Queue is full (max: ${this.maxQueueSize})`);
+      return false;
+    }
     this.queue.push(track);
+    this.eventEmitter.emit('queueChanged', { action: 'add', track, queueLength: this.queue.length });
+    return true;
   }
 
   /**
    * Add multiple tracks to the queue
+   * Returns number of tracks actually added (may be less than requested if queue is full)
    */
-  public addTracks(tracks: Track[]): void {
-    this.queue.push(...tracks);
+  public addTracks(tracks: Track[]): number {
+    const available = this.maxQueueSize - this.queue.length;
+    const toAdd = Math.min(available, tracks.length);
+    if (toAdd < tracks.length) {
+      this.eventEmitter.emit('debug', `Queue full: added ${toAdd}/${tracks.length} tracks`);
+    }
+    this.queue.push(...tracks.slice(0, toAdd));
+    this.eventEmitter.emit('queueChanged', { action: 'addBatch', count: toAdd, queueLength: this.queue.length });
+    return toAdd;
+  }
+
+  /**
+   * Add a track to the front of the queue (play next)
+   */
+  public playNext(track: Track): boolean {
+    if (this.queue.length >= this.maxQueueSize) {
+      this.eventEmitter.emit('debug', `Queue is full (max: ${this.maxQueueSize})`);
+      return false;
+    }
+    this.queue.unshift(track);
+    this.eventEmitter.emit('queueChanged', { action: 'playNext', track, queueLength: this.queue.length });
+    return true;
+  }
+
+  /**
+   * Move a track from one position to another within the queue
+   */
+  public moveTrack(fromIndex: number, toIndex: number): boolean {
+    if (
+      fromIndex < 0 ||
+      fromIndex >= this.queue.length ||
+      toIndex < 0 ||
+      toIndex >= this.queue.length
+    ) {
+      return false;
+    }
+    if (fromIndex === toIndex) {
+      return true;
+    }
+    const [track] = this.queue.splice(fromIndex, 1);
+    this.queue.splice(toIndex, 0, track);
+    this.eventEmitter.emit('queueChanged', { action: 'move', fromIndex, toIndex, queueLength: this.queue.length });
+    return true;
+  }
+
+  /**
+   * Swap two tracks in the queue
+   */
+  public swapTracks(indexA: number, indexB: number): boolean {
+    if (
+      indexA < 0 ||
+      indexB < 0 ||
+      indexA >= this.queue.length ||
+      indexB >= this.queue.length
+    ) {
+      return false;
+    }
+    if (indexA === indexB) {
+      return true;
+    }
+    [this.queue[indexA], this.queue[indexB]] = [this.queue[indexB], this.queue[indexA]];
+    this.eventEmitter.emit('queueChanged', { action: 'swap', indexA, indexB, queueLength: this.queue.length });
+    return true;
   }
 
   /**
@@ -253,7 +544,27 @@ export class Player {
     if (index < 0 || index >= this.queue.length) {
       return undefined;
     }
-    return this.queue.splice(index, 1)[0];
+    const removed = this.queue.splice(index, 1)[0];
+    this.eventEmitter.emit('queueChanged', { action: 'remove', index, queueLength: this.queue.length });
+    return removed;
+  }
+
+  /**
+   * Jump to a specific track in the queue and start playing it
+   */
+  public async jumpTo(index: number): Promise<boolean> {
+    if (index < 0 || index >= this.queue.length) {
+      return false;
+    }
+    const [nextTrack] = this.queue.splice(index, 1);
+
+    // Keep current track in history if it exists
+    if (this.track) {
+      this.previousTracks.push(this.track);
+    }
+
+    await this.play(nextTrack);
+    return true;
   }
 
   /**
@@ -261,6 +572,37 @@ export class Player {
    */
   public clearQueue(): void {
     this.queue = [];
+    this.eventEmitter.emit('queueChanged', { action: 'clear', queueLength: 0 });
+  }
+
+  /**
+   * Get a summary of the queue
+   */
+  public getQueueInfo(): {
+    length: number;
+    totalDurationMs: number;
+    nowPlaying: Track | null;
+    upcomingSample: Track[];
+  } {
+    const totalDurationMs = this.queue.reduce((sum, t) => sum + (t.info.length || 0), 0);
+    const upcomingSample = this.queue.slice(0, Math.min(5, this.queue.length));
+
+    return {
+      length: this.queue.length,
+      totalDurationMs,
+      nowPlaying: this.track,
+      upcomingSample,
+    };
+  }
+
+  /**
+   * Get the next N tracks without mutating the queue
+   */
+  public getUpcoming(count: number = 5): Track[] {
+    if (count <= 0) {
+      return [];
+    }
+    return this.queue.slice(0, count);
   }
 
   /**
@@ -269,20 +611,6 @@ export class Player {
   public setLoopMode(mode: 'off' | 'track' | 'queue'): void {
     this.loopMode = mode;
     this.eventEmitter.emit('debug', `Loop mode set to: ${mode}`);
-  }
-
-  /**
-   * Get playback history
-   */
-  public getHistory(): Track[] {
-    return [...this.history];
-  }
-
-  /**
-   * Clear playback history
-   */
-  public clearHistory(): void {
-    this.history = [];
   }
 
   /**
@@ -388,6 +716,7 @@ export class Player {
       const j = Math.floor(Math.random() * (i + 1));
       [this.queue[i], this.queue[j]] = [this.queue[j], this.queue[i]];
     }
+    this.eventEmitter.emit('queueChanged', { action: 'shuffle', queueLength: this.queue.length });
   }
 
   /**
@@ -397,6 +726,11 @@ export class Player {
     if (this.queue.length === 0) {
       await this.stop();
       return false;
+    }
+
+    // Track that a track was skipped
+    if (this.track) {
+      this.skippedTracks++;
     }
 
     await this.play();
@@ -422,25 +756,106 @@ export class Player {
   // ==================== Search & Load ====================
 
   /**
-   * Search for tracks
+   * Search for tracks with smart rate limiting
+   * Only applies rate limiting to actual search queries (not direct URLs/tracks)
    */
   public async search(
     query: string,
     platform?: SearchPlatformType
   ): Promise<LoadResult> {
-    // If query is a URL, don't add search prefix
+    if (!this.node.isConnected()) {
+      this.eventEmitter.emit('debug', `⚠ Cannot search: Node ${this.node.options.name} is not connected`);
+      throw new Error(`Node ${this.node.options.name} is not connected`);
+    }
+
+    // If query is a URL or encoded track, skip rate limiting (direct operations)
     const isUrl = /^https?:\/\//.test(query);
+    const isEncodedTrack = query.startsWith('dQw4w9WgXcQ'); // Base64-ish pattern for encoded tracks
+    
+    if (!isUrl && !isEncodedTrack) {
+      // Apply rate limiting only to search queries
+      const now = Date.now();
+      const timeSinceLastSearch = now - this.lastSearchTime;
+      if (timeSinceLastSearch < this.apiRateLimitDelay) {
+        await new Promise(resolve => setTimeout(resolve, this.apiRateLimitDelay - timeSinceLastSearch));
+      }
+      this.lastSearchTime = Date.now();
+    }
+    
     const searchPlatform = platform ?? this.defaultSearchPlatform;
     const identifier = isUrl ? query : `${searchPlatform}:${query}`;
     this.eventEmitter.emit('debug', `Searching: ${identifier}`);
-    return this.node.loadTracks(identifier);
+    
+    try {
+      return await this.node.loadTracks(identifier);
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      this.eventEmitter.emit('debug', `✗ Search failed: ${errorMessage}`);
+      throw error;
+    }
   }
 
   /**
    * Load tracks from a URL or search query
    */
   public async load(identifier: string): Promise<LoadResult> {
-    return this.node.loadTracks(identifier);
+    if (!this.node.isConnected()) {
+      this.eventEmitter.emit('debug', `⚠ Cannot load tracks: Node ${this.node.options.name} is not connected`);
+      throw new Error(`Node ${this.node.options.name} is not connected`);
+    }
+    
+    try {
+      return await this.node.loadTracks(identifier);
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      this.eventEmitter.emit('debug', `✗ Load failed: ${errorMessage}`);
+      throw error;
+    }
+  }
+
+  /**
+   * Load multiple identifiers in parallel (useful for batch playlist loading)
+   * Much faster than loading sequentially
+   */
+  public async loadBatch(identifiers: string[]): Promise<LoadResult[]> {
+    if (!this.node.isConnected()) {
+      this.eventEmitter.emit('debug', `⚠ Cannot load batch: Node ${this.node.options.name} is not connected`);
+      throw new Error(`Node ${this.node.options.name} is not connected`);
+    }
+
+    if (identifiers.length === 0) {
+      return [];
+    }
+
+    this.eventEmitter.emit('debug', `Loading ${identifiers.length} tracks in parallel...`);
+    
+    try {
+      // Load all identifiers in parallel for maximum speed
+      const results = await Promise.all(
+        identifiers.map(id => this.node.loadTracks(id))
+      );
+      
+      // Auto-add all successful tracks to queue
+      let addedCount = 0;
+      for (const result of results) {
+        if (result.loadType === 'track' && result.data) {
+          if (this.addTrack(result.data)) {
+            addedCount++;
+          }
+        } else if (result.loadType === 'search' && result.data) {
+          addedCount += this.addTracks(result.data);
+        } else if (result.loadType === 'playlist' && result.data) {
+          addedCount += this.addTracks(result.data.tracks);
+        }
+      }
+      
+      this.eventEmitter.emit('debug', `✓ Batch load complete: added ${addedCount} tracks`);
+      return results;
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      this.eventEmitter.emit('debug', `✗ Batch load failed: ${errorMessage}`);
+      throw error;
+    }
   }
 
   // ==================== Voice State Management ====================
@@ -457,11 +872,23 @@ export class Player {
       this.voiceState.endpoint &&
       this.voiceState.sessionId
     ) {
-      await this.node.updatePlayer(this.guildId, {
-        voice: this.voiceState as VoiceState,
-      });
-      this.connected = true;
-      this.eventEmitter.emit('debug', `Voice state updated for guild ${this.guildId}`);
+      if (!this.node.isConnected()) {
+        this.eventEmitter.emit('debug', `⚠ Cannot update voice state: Node ${this.node.options.name} is not connected`);
+        // Store the voice state anyway so it can be sent when node reconnects
+        return;
+      }
+
+      try {
+        await this.node.updatePlayer(this.guildId, {
+          voice: this.voiceState as VoiceState,
+        });
+        this.connected = true;
+        this.eventEmitter.emit('debug', `Voice state updated for guild ${this.guildId}`);
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        this.eventEmitter.emit('debug', `✗ Error updating voice state: ${errorMessage}`);
+        throw error;
+      }
     }
   }
 
@@ -501,19 +928,6 @@ export class Player {
    */
   public getQueueDuration(): number {
     return this.queue.reduce((total, track) => total + track.info.length, 0);
-  }
-
-  /**
-   * Move track in queue
-   */
-  public moveTrack(from: number, to: number): boolean {
-    if (from < 0 || from >= this.queue.length || to < 0 || to >= this.queue.length) {
-      return false;
-    }
-
-    const [track] = this.queue.splice(from, 1);
-    this.queue.splice(to, 0, track);
-    return true;
   }
 
   // ==================== Internal Methods ====================
@@ -585,7 +999,13 @@ export class Player {
     // Handle loop modes
     if (reason === 'finished' && this.loopMode === 'track') {
       this.eventEmitter.emit('debug', 'Looping current track');
-      await this.play(endedTrack);
+      // Track that this track is being repeated
+      this.repeatTracks.add(endedTrack.encoded);
+      try {
+        await this.play(endedTrack);
+      } catch (error) {
+        this.eventEmitter.emit('debug', `Error looping track: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      }
       return;
     }
 
@@ -597,7 +1017,11 @@ export class Player {
     // Auto-play next track from queue if available
     if (reason === 'finished' && this.queue.length > 0) {
       this.eventEmitter.emit('debug', 'Playing next track from queue');
-      await this.play();
+      try {
+        await this.play();
+      } catch (error) {
+        this.eventEmitter.emit('debug', `Error playing next track: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      }
       return;
     }
 

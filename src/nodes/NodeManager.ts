@@ -16,6 +16,8 @@ export class NodeManager {
   private clientId: string | null = null;
   private eventEmitter: LavalinkEventEmitter | null = null;
   private customPenaltyCalculator: PenaltyCalculator | null = null;
+  private healthCheckInterval: NodeJS.Timeout | null = null;
+  private healthCheckIntervalMs: number = 60000; // 1 minute
 
   private constructor() {}
 
@@ -45,6 +47,77 @@ export class NodeManager {
   public init(clientId: string, eventEmitter: LavalinkEventEmitter): void {
     this.clientId = clientId;
     this.eventEmitter = eventEmitter;
+    this.startHealthCheck();
+  }
+
+  /**
+   * Start periodic health check for all nodes
+   */
+  private startHealthCheck(): void {
+    this.healthCheckInterval = setInterval(() => {
+      this.performHealthCheck();
+    }, this.healthCheckIntervalMs);
+    
+    if (this.healthCheckInterval.unref) {
+      this.healthCheckInterval.unref();
+    }
+  }
+
+  /**
+   * Stop health check interval
+   */
+  private stopHealthCheck(): void {
+    if (this.healthCheckInterval) {
+      clearInterval(this.healthCheckInterval);
+      this.healthCheckInterval = null;
+    }
+  }
+
+  private healthCheckFailures: Map<string, number> = new Map();
+  private readonly MAX_HEALTH_CHECK_FAILURES = 3; // Remove only after 3 failed checks
+
+  /**
+   * Perform health check on all nodes
+   */
+  public async performHealthCheck(): Promise<void> {
+    const nodesToRemove: string[] = [];
+
+    for (const [name, node] of this.nodes) {
+      if (!node.isConnected()) {
+        const failures = (this.healthCheckFailures.get(name) || 0) + 1;
+        this.healthCheckFailures.set(name, failures);
+        this.eventEmitter?.emit(
+          'debug',
+          `Health check: Node ${name} is not connected (failure ${failures}/${this.MAX_HEALTH_CHECK_FAILURES})`
+        );
+        if (failures >= this.MAX_HEALTH_CHECK_FAILURES) {
+          nodesToRemove.push(name);
+        }
+      } else {
+        try {
+          await node.getStats();
+          // Reset failures if node responds
+          this.healthCheckFailures.delete(name);
+        } catch (error) {
+          const failures = (this.healthCheckFailures.get(name) || 0) + 1;
+          this.healthCheckFailures.set(name, failures);
+          this.eventEmitter?.emit(
+            'debug',
+            `Health check: Node ${name} is unresponsive (failure ${failures}/${this.MAX_HEALTH_CHECK_FAILURES}): ${error instanceof Error ? error.message : 'Unknown error'}`
+          );
+          if (failures >= this.MAX_HEALTH_CHECK_FAILURES) {
+            nodesToRemove.push(name);
+          }
+        }
+      }
+    }
+
+    // Remove dead nodes after multiple failures
+    for (const name of nodesToRemove) {
+      this.healthCheckFailures.delete(name);
+      this.eventEmitter?.emit('debug', `Removing dead node after multiple health check failures: ${name}`);
+      this.removeNode(name);
+    }
   }
 
   /**
@@ -113,9 +186,15 @@ export class NodeManager {
    */
   public getBestNode(voiceRegion?: string): Node {
     const connectedNodes = this.getConnectedNodes();
+    const totalNodes = this.nodes.size;
 
     if (connectedNodes.length === 0) {
-      throw new Error('No connected nodes available');
+      const nodeNames = Array.from(this.nodes.keys()).join(', ');
+      this.eventEmitter?.emit(
+        'debug',
+        `No connected nodes available! Total: ${totalNodes}, Connected: 0. Nodes: [${nodeNames}]`
+      );
+      throw new Error(`No connected nodes available (${totalNodes} total nodes configured)`);
     }
 
     // If voice region optimization is requested, prefer nodes in the same region
@@ -125,8 +204,22 @@ export class NodeManager {
       );
       
       if (regionalNodes.length > 0) {
+        this.eventEmitter?.emit(
+          'debug',
+          `Selected best node from ${regionalNodes.length} regional nodes (region: ${voiceRegion})`
+        );
         return this.selectBestFromNodes(regionalNodes);
+      } else {
+        this.eventEmitter?.emit(
+          'debug',
+          `No regional nodes found for region ${voiceRegion}, using best overall node from ${connectedNodes.length} connected nodes`
+        );
       }
+    } else {
+      this.eventEmitter?.emit(
+        'debug',
+        `Selected best node from ${connectedNodes.length} connected nodes (${totalNodes} total)`
+      );
     }
 
     return this.selectBestFromNodes(connectedNodes);
@@ -217,6 +310,8 @@ export class NodeManager {
    * Disconnect all nodes
    */
   public disconnectAll(): void {
+    this.stopHealthCheck();
+    this.healthCheckFailures.clear();
     for (const node of this.nodes.values()) {
       node.disconnect();
     }
@@ -289,6 +384,26 @@ export class NodeManager {
   // ==================== Private Methods ====================
 
   /**
+   * Get human-readable description of disconnect code
+   */
+  private getDisconnectReason(code: number, reason: string): string {
+    const codeDescriptions: Record<number, string> = {
+      1000: 'Normal closure',
+      1001: 'Going away',
+      1002: 'Protocol error',
+      1003: 'Unsupported data',
+      1006: 'Abnormal closure (connection lost)',
+      1007: 'Invalid frame payload',
+      1008: 'Policy violation',
+      4000: 'Heartbeat timeout (node unresponsive)',
+      4001: 'Lavalink declined the connection',
+      4002: 'Lavalink server encountered an error',
+    };
+    const description = codeDescriptions[code] || 'Unknown reason';
+    return `${description} (code: ${code}, details: ${reason || 'none'})`;
+  }
+
+  /**
    * Setup event handlers for a node
    */
   private setupNodeEventHandlers(node: Node): void {
@@ -298,22 +413,39 @@ export class NodeManager {
 
     node.on('onConnect', () => {
       this.eventEmitter!.emit('nodeConnect', node);
-      this.eventEmitter!.emit('debug', `Node ${node.options.name} connected`);
+      this.eventEmitter!.emit(
+        'debug',
+        `✓ Node ${node.options.name} connected successfully (${node.options.host}:${node.options.port})`
+      );
     });
 
     node.on('onDisconnect', (code, reason) => {
       this.eventEmitter!.emit('nodeDisconnect', node, code, reason);
+      const disconnectReason = this.getDisconnectReason(code, reason);
       this.eventEmitter!.emit(
         'debug',
-        `Node ${node.options.name} disconnected: ${code} - ${reason}`
+        `✗ Node ${node.options.name} disconnected: ${disconnectReason}`
       );
+      // Log connected nodes count
+      const connected = this.getConnectedNodes();
+      if (connected.length === 0) {
+        this.eventEmitter!.emit(
+          'debug',
+          `⚠ WARNING: No connected nodes available! You have ${this.nodes.size} total nodes configured.`
+        );
+      } else {
+        this.eventEmitter!.emit(
+          'debug',
+          `⚠ Remaining connected nodes: ${connected.length}/${this.nodes.size}`
+        );
+      }
     });
 
     node.on('onError', (error) => {
       this.eventEmitter!.emit('nodeError', node, error);
       this.eventEmitter!.emit(
         'debug',
-        `Node ${node.options.name} error: ${error.message}`
+        `✗ Node ${node.options.name} error: ${error.message}`
       );
     });
 
@@ -321,7 +453,7 @@ export class NodeManager {
       this.eventEmitter!.emit('nodeReconnect', node, attempt);
       this.eventEmitter!.emit(
         'debug',
-        `Node ${node.options.name} reconnecting (attempt ${attempt})`
+        `🔄 Node ${node.options.name} attempting reconnection (attempt ${attempt}/${node.options.maxReconnectAttempts})`
       );
     });
 
@@ -330,11 +462,27 @@ export class NodeManager {
     });
 
     node.on('onReady', (sessionId, resumed) => {
+      const resumeStatus = resumed ? 'resumed' : 'new session';
       this.eventEmitter!.emit(
         'debug',
-        `Node ${node.options.name} ready (session: ${sessionId}, resumed: ${resumed})`
+        `✓ Node ${node.options.name} ready (${resumeStatus}, session: ${sessionId})`
       );
     });
+  }
+
+  /**
+   * Get metrics for all nodes
+   */
+  public getNodeMetrics(): Array<ReturnType<Node['getMetrics']>> {
+    return Array.from(this.nodes.values()).map(node => node.getMetrics());
+  }
+
+  /**
+   * Get metrics for a specific node
+   */
+  public getNodeMetricsById(name: string): ReturnType<Node['getMetrics']> | undefined {
+    const node = this.nodes.get(name);
+    return node?.getMetrics();
   }
 }
 

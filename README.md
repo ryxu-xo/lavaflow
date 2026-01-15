@@ -5,7 +5,15 @@
 [![npm version](https://img.shields.io/npm/v/lavaflow.svg)](https://www.npmjs.com/package/lavaflow)
 [![License](https://img.shields.io/npm/l/lavaflow.svg)](LICENSE)
 
+**v2.0.0** - Now with advanced queue management, production-ready bot examples, and comprehensive documentation!
+
 ## Features
+
+### 🆕 v2.0.0 Highlights
+- **Advanced Queue Management** - `playNext()`, `moveTrack()`, `swapTracks()`, `jumpTo()`, `getQueueInfo()`, `getUpcoming()`
+- **Player Statistics** - Comprehensive metrics and history tracking
+- **Production-Ready Bot Examples** - Advanced bot with 19 commands, rich embeds, interactive UI
+- **Comprehensive Guides** - 4 documentation files covering setup, commands, comparisons, and visuals
 
 ### Core Features
 - 🎯 **Full Lavalink v4 Support** - Complete implementation of the latest REST API and WebSocket protocol
@@ -51,6 +59,8 @@ npm install lavaflow
 
 ## Quick Start
 
+### Basic Usage
+
 ```typescript
 import { Manager } from 'lavaflow';
 import { Client } from 'discord.js';
@@ -71,8 +81,8 @@ const manager = new Manager({
     const guild = client.guilds.cache.get(guildId);
     if (guild) guild.shard.send(payload);
   },
-  autoPlay: true, // Enable intelligent AutoPlay
-  debug: false // Disable debug logging
+  autoPlay: true,
+  debug: false
 });
 
 // Initialize manager after client is ready
@@ -85,15 +95,6 @@ client.on('raw', (packet) => {
   if (manager.isInitialized()) {
     manager.updateVoiceState(packet);
   }
-});
-
-// Listen to events
-manager.on('trackStart', (player, track) => {
-  console.log(`Now playing: ${track.info.title}`);
-});
-
-manager.on('trackEnd', (player, track, reason) => {
-  console.log(`Track ended: ${reason}`);
 });
 
 // Create and use a player
@@ -109,7 +110,54 @@ const result = await player.search('Never Gonna Give You Up');
 if (result.loadType === 'track') {
   await player.play(result.data);
 }
+```
 
+### v2.0.0 - Advanced Queue Management
+
+```typescript
+// Add to front of queue (play next)
+player.playNext(track);
+
+// Reorder queue
+player.moveTrack(fromIndex, toIndex);
+
+// Swap two tracks
+player.swapTracks(indexA, indexB);
+
+// Jump to track and play immediately
+await player.jumpTo(trackIndex);
+
+// Get queue summary
+const info = player.getQueueInfo();
+console.log(`${info.length} tracks, ${info.totalDurationMs}ms total`);
+
+// Peek at next 5 tracks
+const upcoming = player.getUpcoming(5);
+
+// Get player metrics
+const metrics = player.getMetrics();
+console.log(`Played ${metrics.tracksPlayed} tracks this session`);
+
+// Get history statistics
+const stats = player.getHistoryStats();
+console.log(`${stats.skipped} tracks skipped`);
+```
+
+### Use the Advanced Bot Example
+
+Start with the production-ready bot example (19 commands, rich embeds, interactive UI):
+
+```bash
+node examples/advanced-bot.js
+```
+
+**Commands**: `!play`, `!search`, `!skip`, `!queue`, `!playnext`, `!move`, `!swap`, `!jump`, `!stats`, `!queueinfo`, `!upcoming`, and more!
+
+See `examples/ADVANCED_BOT_GUIDE.md` for complete documentation.
+
+### Audio Filters & Advanced Features
+
+```typescript
 // Use filters with fluent API
 await player.filters()
   .timescale({ speed: 1.2, pitch: 1.0, rate: 1.0 })
@@ -203,6 +251,42 @@ player.filters()
 - `queueEnd` - Queue finished playing
 - `debug` - Debug messages (only if `debug: true`)
 
+## Examples
+
+### Simple Bot (Beginner-Friendly)
+See [simple-5-commands.js](examples/simple-5-commands.js) for a basic Discord music bot with 5 commands (~200 lines).
+
+**Commands**: `!play`, `!stop`, `!pause`, `!resume`, `!skip`
+
+### Advanced Bot (Production-Ready) ⭐ NEW
+See [advanced-bot.js](examples/advanced-bot.js) for a feature-rich bot with 19 commands (~900 lines).
+
+**Features**:
+- Rich Discord embeds with colors, thumbnails, fields
+- Interactive search with 5-result selection (30s timeout)
+- Queue pagination with Previous/Next buttons
+- Progress bar visualization with time tracking
+- Advanced queue control (playNext, move, swap, jump)
+- Comprehensive statistics and queue info
+- Full error handling with helpful messages
+
+**Commands**:
+- **Playback** (6): play, search, skip, pause, resume, stop
+- **Queue** (5): queue, shuffle, clear, remove, nowplaying
+- **Advanced** (4): playnext, move, swap, jump
+- **Info** (4): stats, queueinfo, upcoming, help
+
+### Documentation
+
+New in v2.0.0:
+- [Advanced Bot Guide](examples/ADVANCED_BOT_GUIDE.md) - Complete command reference and setup
+- [Examples Comparison](examples/EXAMPLES_COMPARISON.md) - Compare simple vs advanced bots
+- [Visual Guide](examples/ADVANCED_BOT_VISUAL.md) - Diagrams and visual examples
+- [Examples Index](examples/INDEX.md) - Master navigation guide
+
+### Node.js Example
+See [node-example.js](examples/node-example.js) for using lavaflow without Discord.js.
+
 ## AutoPlay Feature
 
 lavaflow includes intelligent AutoPlay that automatically finds and plays related tracks when your queue ends:
@@ -245,6 +329,50 @@ manager.use(myPlugin);
 Check out [lava-plugin-voice-status](https://github.com/ryxu-xo/lava-voice-status) for a voice channel status plugin example.
 
 ## API Documentation
+
+### v2.0.0 Queue Management API
+
+```typescript
+// Add track to front of queue (play next)
+player.playNext(track): boolean;
+
+// Reorder queue positions
+player.moveTrack(fromIndex: number, toIndex: number): boolean;
+
+// Swap two queue positions
+player.swapTracks(indexA: number, indexB: number): boolean;
+
+// Jump to track and play immediately
+await player.jumpTo(index: number): Promise<boolean>;
+
+// Get queue summary
+player.getQueueInfo(): {
+  length: number;
+  totalDurationMs: number;
+  nowPlaying: Track | null;
+  upcomingSample: Track[];
+};
+
+// Peek at next N tracks
+player.getUpcoming(count?: number): Track[];
+
+// Get player metrics
+player.getMetrics(): {
+  tracksPlayed: number;
+  errorCount: number;
+  totalPlaybackTime: number;
+  sessionDuration: number;
+  uptime: number;
+  avgTracksPerMinute: number;
+};
+
+// Get history statistics
+player.getHistoryStats(): {
+  skipped: number;
+  unique: number;
+  repeated: number;
+};
+```
 
 ### Manager Options
 

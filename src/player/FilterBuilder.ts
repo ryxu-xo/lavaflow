@@ -118,16 +118,20 @@ export class FilterBuilder {
   }
 
   /**
-   * Set equalizer bands
+   * Set equalizer bands with validation
    * @param bands Array of equalizer bands (0-14, gain: -0.25 to 1.0)
    */
   public equalizer(bands: EqualizerBand[]): this {
+    if (!Array.isArray(bands) || bands.length === 0) {
+      throw new Error('Equalizer bands must be a non-empty array');
+    }
+    
     for (const band of bands) {
-      if (band.band < 0 || band.band > 14) {
-        throw new Error('Equalizer band must be between 0 and 14');
+      if (typeof band.band !== 'number' || band.band < 0 || band.band > 14) {
+        throw new Error(`Equalizer band must be between 0 and 14, got ${band.band}`);
       }
-      if (band.gain < -0.25 || band.gain > 1.0) {
-        throw new Error('Equalizer gain must be between -0.25 and 1.0');
+      if (typeof band.gain !== 'number' || band.gain < -0.25 || band.gain > 1.0) {
+        throw new Error(`Equalizer gain must be between -0.25 and 1.0, got ${band.gain}`);
       }
     }
     this.filters.equalizer = bands;
@@ -173,28 +177,28 @@ export class FilterBuilder {
   }
 
   /**
-   * Set tremolo effect
+   * Set tremolo effect with validation
    */
   public tremolo(options: TremoloFilter): this {
-    if (options.frequency <= 0) {
-      throw new Error('Tremolo frequency must be greater than 0');
+    if (typeof options.frequency !== 'number' || options.frequency <= 0) {
+      throw new Error(`Tremolo frequency must be greater than 0, got ${options.frequency}`);
     }
-    if (options.depth < 0 || options.depth > 1) {
-      throw new Error('Tremolo depth must be between 0.0 and 1.0');
+    if (typeof options.depth !== 'number' || options.depth < 0 || options.depth > 1) {
+      throw new Error(`Tremolo depth must be between 0.0 and 1.0, got ${options.depth}`);
     }
     this.filters.tremolo = options;
     return this;
   }
 
   /**
-   * Set vibrato effect
+   * Set vibrato effect with validation
    */
   public vibrato(options: VibratoFilter): this {
-    if (options.frequency < 0 || options.frequency > 14) {
-      throw new Error('Vibrato frequency must be between 0.0 and 14.0');
+    if (typeof options.frequency !== 'number' || options.frequency < 0 || options.frequency > 14) {
+      throw new Error(`Vibrato frequency must be between 0.0 and 14.0, got ${options.frequency}`);
     }
-    if (options.depth < 0 || options.depth > 1) {
-      throw new Error('Vibrato depth must be between 0.0 and 1.0');
+    if (typeof options.depth !== 'number' || options.depth < 0 || options.depth > 1) {
+      throw new Error(`Vibrato depth must be between 0.0 and 1.0, got ${options.depth}`);
     }
     this.filters.vibrato = options;
     return this;

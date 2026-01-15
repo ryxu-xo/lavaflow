@@ -15,13 +15,13 @@ export class AutoPlay {
    */
   public async execute(player: Player, previousTrack: Track): Promise<boolean> {
     if (!previousTrack) {
-      player['eventEmitter'].emit('debug', '[AutoPlay] No previous track provided');
+      player.eventEmitter.emit('debug', '[AutoPlay] No previous track provided');
       return false;
     }
 
     // Check if node is connected
     if (!player.node.isConnected()) {
-      player['eventEmitter'].emit('debug', '[AutoPlay] Node not connected, aborting');
+      player.eventEmitter.emit('debug', '[AutoPlay] Node not connected, aborting');
       return false;
     }
 
@@ -39,7 +39,7 @@ export class AutoPlay {
       }
     }
 
-    player['eventEmitter'].emit('debug', `[AutoPlay] Initiated for ${sourceName}: ${previousTrack.info.title}`);
+    player.eventEmitter.emit('debug', `[AutoPlay] Initiated for ${sourceName}: ${previousTrack.info.title}`);
 
     try {
       switch (sourceName) {
@@ -53,7 +53,7 @@ export class AutoPlay {
           return await this.handleYouTube(player, previousTrack); // Fallback to YouTube
       }
     } catch (error) {
-      player['eventEmitter'].emit('debug', `[AutoPlay] Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      player.eventEmitter.emit('debug', `[AutoPlay] Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
       return false;
     }
   }
@@ -64,19 +64,19 @@ export class AutoPlay {
   private async handleYouTube(player: Player, previousTrack: Track): Promise<boolean> {
     const identifier = previousTrack.info.identifier;
     if (!identifier) {
-      player['eventEmitter'].emit('debug', '[AutoPlay] No identifier found for YouTube track');
+      player.eventEmitter.emit('debug', '[AutoPlay] No identifier found for YouTube track');
       return false;
     }
 
     // YouTube's RD playlist URL for recommendations
     const rdUrl = `https://www.youtube.com/watch?v=${identifier}&list=RD${identifier}`;
-    player['eventEmitter'].emit('debug', `[AutoPlay] Searching YouTube RD: ${rdUrl}`);
+    player.eventEmitter.emit('debug', `[AutoPlay] Searching YouTube RD: ${rdUrl}`);
     
     const result = await player.search(rdUrl, 'ytsearch');
-    player['eventEmitter'].emit('debug', `[AutoPlay] Search result type: ${result.loadType}`);
+    player.eventEmitter.emit('debug', `[AutoPlay] Search result type: ${result.loadType}`);
 
     if (result.loadType === 'error' || result.loadType === 'empty') {
-      player['eventEmitter'].emit('debug', `[AutoPlay] YouTube search failed: ${result.loadType}`);
+      player.eventEmitter.emit('debug', `[AutoPlay] YouTube search failed: ${result.loadType}`);
       return false;
     }
 
@@ -89,7 +89,7 @@ export class AutoPlay {
       tracks = [result.data];
     }
 
-    player['eventEmitter'].emit('debug', `[AutoPlay] Found ${tracks.length} tracks`);
+    player.eventEmitter.emit('debug', `[AutoPlay] Found ${tracks.length} tracks`);
 
     // Filter out already played tracks
     let availableTracks = tracks.filter(track => {
@@ -100,11 +100,11 @@ export class AutoPlay {
     // If all tracks have been played, reset and use all tracks
     if (availableTracks.length === 0) {
       availableTracks = tracks;
-      player['eventEmitter'].emit('debug', '[AutoPlay] All tracks played, resetting filter');
+      player.eventEmitter.emit('debug', '[AutoPlay] All tracks played, resetting filter');
     }
 
     if (availableTracks.length === 0) {
-      player['eventEmitter'].emit('debug', '[AutoPlay] No available tracks after filtering');
+      player.eventEmitter.emit('debug', '[AutoPlay] No available tracks after filtering');
       return false;
     }
 
@@ -112,16 +112,25 @@ export class AutoPlay {
     const randomTrack = availableTracks[Math.floor(Math.random() * availableTracks.length)];
     
     if (!randomTrack) {
-      player['eventEmitter'].emit('debug', '[AutoPlay] Failed to select random track');
+      player.eventEmitter.emit('debug', '[AutoPlay] Failed to select random track');
       return false;
     }
     
-    player.addTrack(randomTrack);
-    player['eventEmitter'].emit('debug', `[AutoPlay] Track added to queue: ${randomTrack.info.title}, queue length: ${player.queue.length}`);
+    const added = player.addTrack(randomTrack);
+    if (!added) {
+      player.eventEmitter.emit('debug', '[AutoPlay] Queue is full, unable to add track');
+      return false;
+    }
+    player.eventEmitter.emit('debug', `[AutoPlay] Track added to queue: ${randomTrack.info.title}, queue size: ${player.queue.length}`);
     
-    await player.play();
+    try {
+      await player.play();
+    } catch (error) {
+      player.eventEmitter.emit('debug', `[AutoPlay] Error playing track: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      return false;
+    }
     
-    player['eventEmitter'].emit('debug', `[AutoPlay] Added YouTube track: ${randomTrack.info.title}`);
+    player.eventEmitter.emit('debug', `[AutoPlay] Added YouTube track: ${randomTrack.info.title}`);
     return true;
   }
 
@@ -164,16 +173,25 @@ export class AutoPlay {
     const randomTrack = availableTracks[Math.floor(Math.random() * availableTracks.length)];
     
     if (!randomTrack) {
-      player['eventEmitter'].emit('debug', '[AutoPlay] Failed to select random SoundCloud track');
+      player.eventEmitter.emit('debug', '[AutoPlay] Failed to select random SoundCloud track');
       return false;
     }
     
-    player.addTrack(randomTrack);
-    player['eventEmitter'].emit('debug', `[AutoPlay] Track added to queue: ${randomTrack.info.title}, queue length: ${player.queue.length}`);
+    const added = player.addTrack(randomTrack);
+    if (!added) {
+      player.eventEmitter.emit('debug', '[AutoPlay] Queue is full, unable to add track');
+      return false;
+    }
+    player.eventEmitter.emit('debug', `[AutoPlay] Track added to queue: ${randomTrack.info.title}, queue size: ${player.queue.length}`);
     
-    await player.play();
+    try {
+      await player.play();
+    } catch (error) {
+      player.eventEmitter.emit('debug', `[AutoPlay] Error playing track: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      return false;
+    }
     
-    player['eventEmitter'].emit('debug', `[AutoPlay] Added SoundCloud track: ${randomTrack.info.title}`);
+    player.eventEmitter.emit('debug', `[AutoPlay] Added SoundCloud track: ${randomTrack.info.title}`);
     return true;
   }
 
@@ -184,16 +202,16 @@ export class AutoPlay {
     const identifier = previousTrack.info.identifier;
 
     if (!identifier) {
-      player['eventEmitter'].emit('debug', '[AutoPlay] Missing identifier for Spotify track');
+      player.eventEmitter.emit('debug', '[AutoPlay] Missing identifier for Spotify track');
       return false;
     }
 
     // Try using Spotify recommendations endpoint (sprec:)
-    player['eventEmitter'].emit('debug', `[AutoPlay] Getting Spotify recommendations for: ${identifier}`);
-    const recResult = await player.search(`sprec:${identifier}`, 'spsearch');
+    player.eventEmitter.emit('debug', `[AutoPlay] Getting Spotify recommendations for: ${identifier}`);
+    const recResult = await player.search(`${identifier}`, 'spsearch');
 
     if (recResult.loadType === 'error' || recResult.loadType === 'empty') {
-      player['eventEmitter'].emit('debug', '[AutoPlay] Spotify recommendations failed, falling back to artist search');
+      player.eventEmitter.emit('debug', '[AutoPlay] Spotify recommendations failed, falling back to artist search');
       // Fallback to artist search
       return this.handleSpotifyArtistFallback(player, previousTrack);
     }
@@ -208,7 +226,7 @@ export class AutoPlay {
     }
 
     if (!tracks.length) {
-      player['eventEmitter'].emit('debug', '[AutoPlay] No recommendations found, falling back to artist search');
+      player.eventEmitter.emit('debug', '[AutoPlay] No recommendations found, falling back to artist search');
       return this.handleSpotifyArtistFallback(player, previousTrack);
     }
 
@@ -220,7 +238,7 @@ export class AutoPlay {
 
     if (!available.length) {
       available = tracks;
-      player['eventEmitter'].emit('debug', '[AutoPlay] All recommendations played, resetting filter');
+      player.eventEmitter.emit('debug', '[AutoPlay] All recommendations played, resetting filter');
     }
 
     if (!available.length) {
@@ -231,16 +249,25 @@ export class AutoPlay {
     const randomTrack = available[Math.floor(Math.random() * available.length)];
 
     if (!randomTrack) {
-      player['eventEmitter'].emit('debug', '[AutoPlay] Failed to select random Spotify track');
+      player.eventEmitter.emit('debug', '[AutoPlay] Failed to select random Spotify track');
       return false;
     }
 
-    player.addTrack(randomTrack);
-    player['eventEmitter'].emit('debug', `[AutoPlay] Track added to queue: ${randomTrack.info.title}, queue length: ${player.queue.length}`);
+    const added = player.addTrack(randomTrack);
+    if (!added) {
+      player.eventEmitter.emit('debug', '[AutoPlay] Queue is full, unable to add track');
+      return false;
+    }
+    player.eventEmitter.emit('debug', `[AutoPlay] Track added to queue: ${randomTrack.info.title}, queue size: ${player.queue.length}`);
     
-    await player.play();
+    try {
+      await player.play();
+    } catch (error) {
+      player.eventEmitter.emit('debug', `[AutoPlay] Error playing track: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      return false;
+    }
 
-    player['eventEmitter'].emit(
+    player.eventEmitter.emit(
       'debug',
       `[AutoPlay] Added Spotify recommended track: ${randomTrack.info.title}`
     );
@@ -292,16 +319,25 @@ export class AutoPlay {
     const randomTrack = available[Math.floor(Math.random() * available.length)];
 
     if (!randomTrack) {
-      player['eventEmitter'].emit('debug', '[AutoPlay] Failed to select random artist track');
+      player.eventEmitter.emit('debug', '[AutoPlay] Failed to select random artist track');
       return false;
     }
 
-    player.addTrack(randomTrack);
-    player['eventEmitter'].emit('debug', `[AutoPlay] Track added to queue: ${randomTrack.info.title}, queue length: ${player.queue.length}`);
+    const added = player.addTrack(randomTrack);
+    if (!added) {
+      player.eventEmitter.emit('debug', '[AutoPlay] Queue is full, unable to add track');
+      return false;
+    }
+    player.eventEmitter.emit('debug', `[AutoPlay] Track added to queue: ${randomTrack.info.title}, queue size: ${player.queue.length}`);
     
-    await player.play();
+    try {
+      await player.play();
+    } catch (error) {
+      player.eventEmitter.emit('debug', `[AutoPlay] Error playing track: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      return false;
+    }
 
-    player['eventEmitter'].emit(
+    player.eventEmitter.emit(
       'debug',
       `[AutoPlay] Added Spotify artist track (fallback): ${randomTrack.info.title}`
     );

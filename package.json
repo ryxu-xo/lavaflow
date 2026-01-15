@@ -1,7 +1,7 @@
 {
   "name": "lavaflow",
-  "version": "1.0.5",
-  "description": "Professional-grade Lavalink v4 client library for Node.js with TypeScript-first design",
+  "version": "2.0.0",
+  "description": "Professional-grade Lavalink v4 & Nodelink client library for Node.js with TypeScript-first design. Multi-backend support, advanced queue management, playback stats, caching, and recommendations.",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "files": [
@@ -19,11 +19,16 @@
   "keywords": [
     "lavalink",
     "lavalink-v4",
+    "nodelink",
     "audio",
     "music",
     "discord",
     "websocket",
-    "rest-api"
+    "rest-api",
+    "queue-management",
+    "playback-stats",
+    "caching",
+    "recommendations"
   ],
   "author": "ryxu-xo <https://github.com/ryxu-xo>",
   "license": "MIT",
@@ -39,6 +44,7 @@
     "node": ">=16.0.0"
   },
   "dependencies": {
+    "discord.js": "^14.25.1",
     "ws": "^8.14.2"
   },
   "devDependencies": {

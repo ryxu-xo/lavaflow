@@ -29,6 +29,7 @@ export interface ManagerEvents {
 
   // Queue events
   queueEnd: [player: Player];
+  queueChanged: [{ action: string; track?: Track; count?: number; fromIndex?: number; toIndex?: number; indexA?: number; indexB?: number; index?: number; queueLength: number }];
 
   // WebSocket events
   socketClosed: [player: Player, code: number, reason: string, byRemote: boolean];

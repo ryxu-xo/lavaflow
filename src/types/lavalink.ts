@@ -452,6 +452,12 @@ export interface ManagerOptions {
   defaultSearchPlatform?: 'ytsearch' | 'ytmsearch' | 'scsearch' | 'spsearch' | 'amsearch';
   /** Enable debug logging */
   debug?: boolean;
+  /** Maximum queue size per player (default: 1000) */
+  maxQueueSize?: number;
+  /** API rate limit delay in ms (default: 50) */
+  apiRateLimitDelay?: number;
+  /** Health check interval in ms (default: 60000) */
+  healthCheckInterval?: number;
 }
 
 export interface DiscordVoicePayload {
