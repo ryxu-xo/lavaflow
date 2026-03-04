@@ -60,6 +60,12 @@ export class Node {
   private eventHandlers: Partial<NodeEventHandlers> = {};
   private lastHeartbeat: number = 0;
   private heartbeatInterval: NodeJS.Timeout | null = null;
+  private clientId: string | null = null;
+
+  // Metrics
+  private createdAt: number = Date.now();
+  private lastDisconnect: number | null = null;
+  private disconnectCount: number = 0;
 
   constructor(options: NodeOptions) {
     this.options = {
@@ -68,7 +74,7 @@ export class Node {
       port: options.port,
       password: options.password,
       secure: options.secure ?? false,
-      resumeKey: options.resumeKey ?? 'lava.ts',
+      resumeKey: options.resumeKey ?? 'lavaflow',
       resumeTimeout: options.resumeTimeout ?? 60,
       maxReconnectAttempts: options.maxReconnectAttempts ?? 3,
       reconnectDelay: options.reconnectDelay ?? 5000,
@@ -100,6 +106,7 @@ export class Node {
     }
 
     this.state = NodeState.CONNECTING;
+    this.clientId = clientId;
 
     const protocol = this.options.secure ? 'wss' : 'ws';
     const url = `${protocol}://${this.options.host}:${this.options.port}/v4/websocket`;
@@ -108,7 +115,7 @@ export class Node {
       headers: {
         'Authorization': this.options.password,
         'User-Id': clientId,
-        'Client-Name': 'lava.ts/1.0.0',
+        'Client-Name': 'lavaflow/1.0.0',
         'Resume-Key': this.options.resumeKey,
       },
     });
@@ -154,7 +161,28 @@ export class Node {
    */
   public async loadTracks(identifier: string): Promise<LoadResult> {
     const encodedIdentifier = encodeURIComponent(identifier);
-    return this.http.get<LoadResult>(`/v4/loadtracks?identifier=${encodedIdentifier}`);
+    const endpoint = `/v4/loadtracks?identifier=${encodedIdentifier}`;
+
+    const maxAttempts = this.options.retryStrategy === 'none' ? 1 : 3;
+    let attempt = 0;
+    let lastError: Error | null = null;
+
+    while (attempt < maxAttempts) {
+      attempt++;
+      try {
+        return await this.http.get<LoadResult>(endpoint);
+      } catch (error) {
+        lastError = error instanceof Error ? error : new Error(String(error));
+
+        if (!this.shouldRetryLoadError(lastError) || attempt >= maxAttempts) {
+          throw lastError;
+        }
+
+        await this.delay(this.getLoadRetryDelay(attempt));
+      }
+    }
+
+    throw lastError ?? new Error('Unknown loadTracks error');
   }
 
   /**
@@ -176,7 +204,8 @@ export class Node {
    * Get player information
    */
   public async getPlayer(guildId: string): Promise<PlayerResponse> {
-    return this.http.get<PlayerResponse>(`/v4/sessions/${this.sessionId}/players/${guildId}`);
+    const sessionId = this.requireSessionId();
+    return this.http.get<PlayerResponse>(`/v4/sessions/${sessionId}/players/${guildId}`);
   }
 
   /**
@@ -187,10 +216,22 @@ export class Node {
     payload: UpdatePlayerPayload,
     noReplace: boolean = false
   ): Promise<PlayerResponse> {
+    const sessionId = this.requireSessionId();
+    const normalizedPayload: UpdatePlayerPayload = { ...payload };
+
+    if (!normalizedPayload.track && (payload.encodedTrack !== undefined || payload.identifier !== undefined)) {
+      normalizedPayload.track = {
+        encoded: payload.encodedTrack,
+        identifier: payload.identifier,
+      };
+      delete normalizedPayload.encodedTrack;
+      delete normalizedPayload.identifier;
+    }
+
     const query = noReplace ? '?noReplace=true' : '';
     return this.http.patch<PlayerResponse>(
-      `/v4/sessions/${this.sessionId}/players/${guildId}${query}`,
-      payload
+      `/v4/sessions/${sessionId}/players/${guildId}${query}`,
+      normalizedPayload
     );
   }
 
@@ -198,7 +239,8 @@ export class Node {
    * Destroy a player
    */
   public async destroyPlayer(guildId: string): Promise<void> {
-    await this.http.delete(`/v4/sessions/${this.sessionId}/players/${guildId}`);
+    const sessionId = this.requireSessionId();
+    await this.http.delete(`/v4/sessions/${sessionId}/players/${guildId}`);
   }
 
   /**
@@ -219,12 +261,73 @@ export class Node {
   }
 
   /**
+   * Get Lavalink version string
+   */
+  public async getVersion(): Promise<string> {
+    return this.http.get<string>('/version');
+  }
+
+  /**
+   * Get all players for current session
+   */
+  public async getSessionPlayers(): Promise<PlayerResponse[]> {
+    const sessionId = this.requireSessionId();
+    return this.http.get<PlayerResponse[]>(`/v4/sessions/${sessionId}/players`);
+  }
+
+  /**
    * Update session with resume capability
    */
   public async updateSession(resuming: boolean, timeout: number): Promise<void> {
-    await this.http.patch(`/v4/sessions/${this.sessionId}`, {
+    const sessionId = this.requireSessionId();
+    await this.http.patch(`/v4/sessions/${sessionId}`, {
       resuming,
       timeout,
+    });
+  }
+
+  private requireSessionId(): string {
+    if (!this.sessionId) {
+      throw new Error(`Node ${this.options.name} is not ready: missing Lavalink session ID`);
+    }
+
+    return this.sessionId;
+  }
+
+  private shouldRetryLoadError(error: Error): boolean {
+    const message = error.message.toLowerCase();
+
+    return (
+      message.includes('http 429') ||
+      message.includes('http 500') ||
+      message.includes('http 502') ||
+      message.includes('http 503') ||
+      message.includes('http 504') ||
+      message.includes('fetch') ||
+      message.includes('network') ||
+      message.includes('timeout')
+    );
+  }
+
+  private getLoadRetryDelay(attempt: number): number {
+    switch (this.options.retryStrategy) {
+      case 'none':
+        return 0;
+      case 'linear':
+        return Math.min(2000, 300 * attempt);
+      case 'exponential':
+      default:
+        return Math.min(3000, 200 * (2 ** (attempt - 1)));
+    }
+  }
+
+  private async delay(ms: number): Promise<void> {
+    if (ms <= 0) {
+      return;
+    }
+
+    await new Promise<void>((resolve) => {
+      setTimeout(resolve, ms);
     });
   }
 
@@ -252,6 +355,7 @@ export class Node {
   private onClose(code: number, reason: Buffer): void {
     this.state = NodeState.DISCONNECTED;
     this.clearHeartbeatInterval();
+    this.recordDisconnect();
 
     const reasonString = reason.toString();
     this.eventHandlers.onDisconnect?.(code, reasonString);
@@ -381,13 +485,13 @@ export class Node {
   }
 
   private async reconnect(): Promise<void> {
-    if (!this.sessionId) {
-      this.eventHandlers.onError?.(new Error('Cannot reconnect without session ID'));
+    if (!this.clientId) {
+      this.eventHandlers.onError?.(new Error('Cannot reconnect without client ID'));
       return;
     }
 
     try {
-      await this.connect(this.sessionId);
+      await this.connect(this.clientId);
     } catch (error) {
       this.eventHandlers.onError?.(
         error instanceof Error ? error : new Error('Reconnection failed')
@@ -516,5 +620,38 @@ export class Node {
       memory: memoryPenalty,
       frames: framesPenalty,
     };
+  }
+
+  /**
+   * Get node metrics (uptime, disconnect count, etc.)
+   */
+  public getMetrics(): {
+    name: string;
+    uptime: number;
+    isConnected: boolean;
+    lastDisconnect: number | null;
+    disconnectCount: number;
+    sessionId: string | null;
+    players: number;
+    playingPlayers: number;
+  } {
+    return {
+      name: this.options.name,
+      uptime: Date.now() - this.createdAt,
+      isConnected: this.state === NodeState.CONNECTED,
+      lastDisconnect: this.lastDisconnect,
+      disconnectCount: this.disconnectCount,
+      sessionId: this.sessionId,
+      players: this.stats?.players ?? 0,
+      playingPlayers: this.stats?.playingPlayers ?? 0,
+    };
+  }
+
+  /**
+   * Track a disconnect event (internal use)
+   */
+  public recordDisconnect(): void {
+    this.lastDisconnect = Date.now();
+    this.disconnectCount++;
   }
 }

@@ -7,6 +7,62 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.1.0] - 2026-03-04
+
+### Added
+- Startup diagnostics API:
+  - `Manager#runStartupDiagnostics()`
+  - `StartupDiagnosticReport` and `StartupNodeDiagnostic` types
+- AutoPlay candidate quality filtering and multi-platform fallback strategy for Spotify tracks.
+
+### Changed
+- `VoiceState` now supports `channelId` in player voice updates for stricter Lavalink/Discord voice paths.
+- `examples/v3-structured-bot.js` now uses Discord.js `clientReady` event (v15-compatible naming).
+- Node version resolution now prefers `/v4/info` semver and falls back to `/version`.
+- Plugin event hook typing tightened from `any[]` to `unknown[]`.
+- `loadTracks` now supports retry/backoff for transient failures (`429`, `5xx`, timeout/network).
+
+### Fixed
+- Fixed voice forwarding payload compatibility by sending `channelId` alongside `token`, `endpoint`, and `sessionId`.
+- Fixed `/version` response handling (plain-text response no longer parsed as JSON).
+- Reduced HTTP 400 voice update failures by normalizing endpoint formatting and adding one safe retry path.
+- Fixed AutoPlay selecting invalid low-quality Spotify results (e.g. numeric-only titles like `"1"`).
+- Improved session-scoped REST safety by guarding against missing Lavalink session IDs before session API calls.
+- Prevented potential `nodeError` emission with undefined node reference during init failures.
+
+### Documentation
+- Updated README and examples index to reflect v3 runtime features, DAVE readiness checks, and structured v3 example usage.
+
+## [3.0.0] - 2026-03-04
+
+### Added
+- Node and Manager version/session helpers:
+  - `Node#getVersion()`
+  - `Node#getSessionPlayers()`
+  - `Manager#getNodeVersion(name)`
+  - `Manager#getNodeVersions()`
+  - `Manager#getSessionPlayers(nodeName)`
+- Automatic node failover with player migration via `autoMovePlayersOnNodeDisconnect`.
+- New `playerNodeMigrate` event for observability when players are moved between nodes.
+- DAVE readiness APIs and config:
+  - `Manager#getDaveReadinessReport()`
+  - `ManagerOptions.dave` (`enabled`, `maxProtocolVersion`, `minLavalinkVersion`)
+- New structured v3 example bot: `examples/v3-structured-bot.js`.
+
+### Fixed
+- Reconnection now uses the original Discord bot client ID instead of session ID.
+- `TrackEndReason` compatibility improved for newer Lavalink formats (`FINISHED`, `LOAD_FAILED`, etc.).
+- `updatePlayer` now supports modern Lavalink track payload shape (`track.encoded` / `track.identifier`) while preserving legacy compatibility.
+
+### Changed
+- Player playback updates now include `track.userData` when available.
+- Health check interval option is now applied to `NodeManager` initialization.
+- Player filter state is now retained and reapplied across node migration.
+- Playback speed/pitch updates now merge into existing filter state instead of overriding unrelated filters.
+
+### Documentation
+- Added Lavalink v4.20 readiness notes and DAVE protocol integration guidance to README.
+
 ## [2.0.0] - 2026-01-15
 
 ### Added
@@ -415,6 +471,9 @@ See git history for [1.x.x] and earlier versions.
 - Minor improvements
 - Dependency updates
 
-[Unreleased]: https://github.com/ryxu-xo/lavaflow/compare/v1.0.0...HEAD
+[Unreleased]: https://github.com/ryxu-xo/lavaflow/compare/v3.1.0...HEAD
+[3.1.0]: https://github.com/ryxu-xo/lavaflow/compare/v3.0.0...v3.1.0
+[3.0.0]: https://github.com/ryxu-xo/lavaflow/compare/v2.0.0...v3.0.0
+[2.0.0]: https://github.com/ryxu-xo/lavaflow/compare/v1.0.0...v2.0.0
 [1.0.0]: https://github.com/ryxu-xo/lavaflow/releases/tag/v1.0.0
 [0.1.0]: https://github.com/ryxu-xo/lavaflow/releases/tag/v0.1.0

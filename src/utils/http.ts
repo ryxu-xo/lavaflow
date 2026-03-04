@@ -56,9 +56,16 @@ export class HttpClient {
         return {} as T;
       }
 
-      // Parse JSON response
-      const data = await response.json();
-      return data as T;
+      const contentType = response.headers.get('content-type')?.toLowerCase() ?? '';
+
+      if (contentType.includes('application/json')) {
+        const data = await response.json();
+        return data as T;
+      }
+
+      // Lavalink `/version` returns plain text
+      const text = await response.text();
+      return text as T;
     } catch (error) {
       if (error instanceof Error) {
         throw new Error(`Request failed: ${error.message}`);

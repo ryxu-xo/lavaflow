@@ -1,9 +1,14 @@
+/*
+* lavaflow TypeScript Configuration File
+*/
+
+
 {
   "compilerOptions": {
     "target": "ES2022",
     "module": "commonjs",
     "lib": ["ES2022", "DOM"],
-    "outDir": "./dist",
+    "outDir": "dist",
     "rootDir": "./src",
     "declaration": true,
     "declarationMap": true,
@@ -28,5 +33,5 @@
     "allowSyntheticDefaultImports": true
   },
   "include": ["src/**/*"],
-  "exclude": ["node_modules", "dist", "tests"]
+  "exclude": ["node_modules", "dist"]
 }

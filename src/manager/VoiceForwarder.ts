@@ -72,7 +72,7 @@ export class VoiceForwarder {
 
     // Update token and endpoint
     voiceState.token = token;
-    voiceState.endpoint = endpoint;
+    voiceState.endpoint = endpoint ? this.normalizeEndpoint(endpoint) : undefined;
 
     // If we have complete voice state, forward to Lavalink
     if (player && voiceState.sessionId) {
@@ -138,21 +138,77 @@ export class VoiceForwarder {
     player: Player,
     voiceState: VoiceConnection
   ): Promise<void> {
-    if (!voiceState.sessionId || !voiceState.token || !voiceState.endpoint) {
-      throw new Error('Incomplete voice state');
+    const channelId = voiceState.channelId ?? player.voiceChannelId;
+
+    if (!voiceState.sessionId || !voiceState.token || !voiceState.endpoint || !channelId) {
+      this.eventEmitter.emit('debug', `Invalid voice state for guild ${player.guildId}: missing session, token, endpoint, or channelId`);
+      return;
     }
 
-    const lavalinkVoiceState: VoiceState = {
+    let lavalinkVoiceState: VoiceState = {
       token: voiceState.token,
       endpoint: voiceState.endpoint,
       sessionId: voiceState.sessionId,
+      channelId,
     };
 
-    await player.updateVoiceState(lavalinkVoiceState);
-    this.eventEmitter.emit(
-      'debug',
-      `Forwarded voice state to Lavalink for guild ${player.guildId}`
-    );
+    try {
+      await player.updateVoiceState(lavalinkVoiceState);
+      this.eventEmitter.emit(
+        'debug',
+        `Forwarded voice state to Lavalink for guild ${player.guildId}`
+      );
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+
+      // Some Lavalink deployments reject endpoint values with explicit port (e.g. :443).
+      // Retry once with hostname-only endpoint when we receive HTTP 400.
+      const retryEndpoint = lavalinkVoiceState.endpoint.replace(/:\d+$/, '');
+      const shouldRetry =
+        message.includes('HTTP 400') && retryEndpoint !== lavalinkVoiceState.endpoint;
+
+      if (shouldRetry) {
+        try {
+          lavalinkVoiceState = {
+            ...lavalinkVoiceState,
+            endpoint: retryEndpoint,
+          };
+          await player.updateVoiceState(lavalinkVoiceState);
+          this.eventEmitter.emit(
+            'debug',
+            `Forwarded voice state to Lavalink after endpoint retry for guild ${player.guildId}`
+          );
+          return;
+        } catch (retryError) {
+          this.eventEmitter.emit(
+            'debug',
+            `Voice endpoint retry failed for guild ${player.guildId}: ${retryError instanceof Error ? retryError.message : 'Unknown error'}`
+          );
+        }
+      }
+
+      this.eventEmitter.emit(
+        'debug',
+        `Error forwarding voice state for guild ${player.guildId}: ${message}`
+      );
+      return;
+    }
+  }
+
+  /**
+   * Normalize Discord voice endpoint for Lavalink.
+   * Lavalink expects hostname[:port] without protocol prefix.
+   */
+  private normalizeEndpoint(endpoint: string): string {
+    const cleaned = endpoint
+      .trim()
+      .replace(/^wss?:\/\//i, '')
+      .replace(/\/$/, '')
+      .replace(/\?.*$/, '')
+      .replace(/\/.*$/, '');
+
+    // Prefer hostname-only format for Lavalink compatibility.
+    return cleaned.replace(/:443$/, '').replace(/:80$/, '');
   }
 
   /**
