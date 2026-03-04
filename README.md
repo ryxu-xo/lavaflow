@@ -3,9 +3,53 @@
 > A professional-grade, TypeScript-first Lavalink v4 client library for Node.js
 
 [![npm version](https://img.shields.io/npm/v/lavaflow.svg)](https://www.npmjs.com/package/lavaflow)
+[![npm downloads](https://img.shields.io/npm/dm/lavaflow.svg)](https://www.npmjs.com/package/lavaflow)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.x-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
+[![Node.js](https://img.shields.io/badge/Node.js-%3E%3D16-339933?logo=nodedotjs&logoColor=white)](https://nodejs.org/)
 [![License](https://img.shields.io/npm/l/lavaflow.svg)](LICENSE)
 
+**v3.1.0** - Major upgrade with auto node failover, player migration, Lavalink 4.20 improvements, and DAVE readiness reporting.
+
+> ⚡ Build resilient Discord music bots with Lavalink v4.20+, automatic failover, typed APIs, and production-ready runtime diagnostics.
+
+## Why lavaflow?
+
+- 🚀 **Production-first runtime** — Node failover, reconnect logic, startup diagnostics, and safer voice forwarding.
+- 🧠 **Developer-friendly API** — TypeScript-first, fluent filters, clear events, and easy plugin integration.
+- 🔒 **Modern compatibility** — Lavalink v4.20-ready behavior with DAVE readiness reporting and strict voice-state support.
+
+## Quick Navigation
+
+- ➜ [Features](#features)
+- ➜ [Installation](#installation)
+- ➜ [Quick Start](#quick-start)
+- ➜ [Copy-Paste Quickstart](#copy-paste-quickstart-discordjs-v1415)
+- ➜ [Examples](#examples)
+- ➜ [API Documentation](#api-documentation)
+- ➜ [Architecture](#architecture)
+- ➜ [Events](#events)
+- ➜ [Support](#support)
+
 ## Features
+
+### ✅ Lavalink v4.20 Readiness
+- **Modern Update Player Payload** - Uses `track.encoded` / `track.identifier` format with support for `userData`
+- **Track End Reason Compatibility** - Handles both legacy and newer reason formats (e.g. `finished` and `FINISHED`)
+- **Improved Reconnection** - Reconnects with proper Discord bot client ID for stable node recovery
+- **Session & Version Helpers** - New manager/node helpers to inspect Lavalink versions and active session players
+
+### 🔐 DAVE Protocol Note
+- **DAVE is negotiated in Discord voice infrastructure and Lavalink server internals**
+- This client library remains compatible at the control/API layer, but full DAVE media encryption behavior depends on your Lavalink server version/configuration
+- Recommended: run latest Lavalink 4.20.x build and validate voice connectivity in your target guild setup
+
+### 🆕 v3.1.0 Highlights
+- ✅ **Advanced Queue Management** - `playNext()`, `moveTrack()`, `swapTracks()`, `jumpTo()`, `getQueueInfo()`, `getUpcoming()`
+- ✅ **Player Statistics** - Session metrics and history tracking
+- ✅ **Automatic Player Failover** - Auto-migrate players to healthy nodes when one disconnects
+- ✅ **DAVE Readiness API** - Inspect compatibility with `getDaveReadinessReport()`
+- ✅ **Structured v3 Example** - Production-ready JS example for failover + diagnostics
+- ✅ **Comprehensive Guides** - Setup, visual guide, examples comparison, and index
 
 ### Core Features
 - 🎯 **Full Lavalink v4 Support** - Complete implementation of the latest REST API and WebSocket protocol
@@ -18,6 +62,7 @@
 - 🎭 **Event-Driven** - Comprehensive event system for reactive programming
 - 🔌 **Plugin Support** - Extend functionality with custom plugins
 - 🛡️ **Production-Ready** - Battle-tested design patterns and error handling
+- 🚚 **State-Aware Node Migration** - Preserves voice state, volume, filters, playback position, and pause state across node migration
 
 ### Player Features
 - ▶️ **Full Playback Control** - Play, pause, resume, stop, seek
@@ -51,6 +96,53 @@ npm install lavaflow
 
 ## Quick Start
 
+### Copy-Paste Quickstart (Discord.js v14/15)
+
+```typescript
+import { Client, GatewayIntentBits } from 'discord.js';
+import { Manager } from 'lavaflow';
+
+const client = new Client({
+  intents: [
+    GatewayIntentBits.Guilds,
+    GatewayIntentBits.GuildVoiceStates,
+  ],
+});
+
+const manager = new Manager({
+  nodes: [
+    {
+      name: 'main',
+      host: 'localhost',
+      port: 2333,
+      password: 'youshallnotpass',
+      secure: false,
+    },
+  ],
+  send: (guildId, payload) => {
+    const guild = client.guilds.cache.get(guildId);
+    if (guild) guild.shard.send(payload);
+  },
+  autoPlay: true,
+  debug: true,
+});
+
+client.once('clientReady', async () => {
+  await manager.init(client.user!.id);
+  console.log(`Ready as ${client.user!.tag}`);
+});
+
+client.on('raw', (packet) => {
+  if (manager.isInitialized()) {
+    manager.updateVoiceState(packet);
+  }
+});
+
+client.login(process.env.DISCORD_TOKEN);
+```
+
+### Basic Usage
+
 ```typescript
 import { Manager } from 'lavaflow';
 import { Client } from 'discord.js';
@@ -71,12 +163,12 @@ const manager = new Manager({
     const guild = client.guilds.cache.get(guildId);
     if (guild) guild.shard.send(payload);
   },
-  autoPlay: true, // Enable intelligent AutoPlay
-  debug: false // Disable debug logging
+  autoPlay: true,
+  debug: false
 });
 
-// Initialize manager after client is ready
-client.on('ready', () => {
+// Initialize manager after Discord client is ready
+client.once('clientReady', () => {
   manager.init(client.user!.id);
 });
 
@@ -85,15 +177,6 @@ client.on('raw', (packet) => {
   if (manager.isInitialized()) {
     manager.updateVoiceState(packet);
   }
-});
-
-// Listen to events
-manager.on('trackStart', (player, track) => {
-  console.log(`Now playing: ${track.info.title}`);
-});
-
-manager.on('trackEnd', (player, track, reason) => {
-  console.log(`Track ended: ${reason}`);
 });
 
 // Create and use a player
@@ -109,7 +192,79 @@ const result = await player.search('Never Gonna Give You Up');
 if (result.loadType === 'track') {
   await player.play(result.data);
 }
+```
 
+### v3.1.0 - Advanced Queue & Runtime Features
+
+```typescript
+// Add to front of queue (play next)
+player.playNext(track);
+
+// Reorder queue
+player.moveTrack(fromIndex, toIndex);
+
+// Swap two tracks
+player.swapTracks(indexA, indexB);
+
+// Jump to track and play immediately
+await player.jumpTo(trackIndex);
+
+// Get queue summary
+const info = player.getQueueInfo();
+console.log(`${info.length} tracks, ${info.totalDurationMs}ms total`);
+
+// Peek at next 5 tracks
+const upcoming = player.getUpcoming(5);
+
+// Get player metrics
+const metrics = player.getMetrics();
+console.log(`Played ${metrics.tracksPlayed} tracks this session`);
+
+// Get history statistics
+const stats = player.getHistoryStats();
+console.log(`${stats.skipped} tracks skipped`);
+
+// Lavalink version visibility (useful for upgrade audits)
+const versions = await manager.getNodeVersions();
+for (const [node, version] of versions) {
+  console.log(`${node}: ${version}`);
+}
+
+// DAVE readiness diagnostics
+const dave = await manager.getDaveReadinessReport();
+console.log(`DAVE ready: ${dave.summary.ready}`);
+
+// Startup diagnostics
+const diagnostics = await manager.runStartupDiagnostics();
+console.log(`Healthy nodes: ${diagnostics.healthyNodes}/${diagnostics.totalNodes}`);
+```
+
+### v3 Structured Example (JavaScript)
+
+```bash
+node examples/v3-structured-bot.js
+```
+
+This example demonstrates:
+- auto failover with `autoMovePlayersOnNodeDisconnect`
+- node version visibility (`!nodes`)
+- DAVE readiness reporting (`!dave`)
+
+### Use the Advanced Bot Example
+
+Start with the production-ready bot example (19 commands, rich embeds, interactive UI):
+
+```bash
+node examples/advanced-bot.js
+```
+
+**Commands**: `!play`, `!search`, `!skip`, `!queue`, `!playnext`, `!move`, `!swap`, `!jump`, `!stats`, `!queueinfo`, `!upcoming`, and more!
+
+See `examples/ADVANCED_BOT_GUIDE.md` for complete documentation.
+
+### Audio Filters & Advanced Features
+
+```typescript
 // Use filters with fluent API
 await player.filters()
   .timescale({ speed: 1.2, pitch: 1.0, rate: 1.0 })
@@ -157,6 +312,11 @@ if (!cachedTrack) {
 
 ## Architecture
 
+<details>
+<summary><strong>🏗️ Expand Architecture</strong></summary>
+
+<br>
+
 ### Node Manager
 Manages multiple Lavalink nodes with intelligent load balancing based on:
 - Player count (active and playing players)
@@ -188,6 +348,8 @@ player.filters()
   .apply();
 ```
 
+</details>
+
 ## Events
 
 - `nodeConnect` - Node connected successfully
@@ -200,16 +362,69 @@ player.filters()
 - `trackException` - Track encountered an error
 - `playerCreate` - Player created
 - `playerDestroy` - Player destroyed
+- `playerNodeMigrate` - Player moved from one node to another
+- `queueChanged` - Queue mutation event emitted
 - `queueEnd` - Queue finished playing
 - `debug` - Debug messages (only if `debug: true`)
 
+## Examples
+
+<details>
+<summary><strong>📚 Expand Examples</strong></summary>
+
+<br>
+
+### Simple Bot (Beginner-Friendly)
+See [simple-5-commands.js](examples/simple-5-commands.js) for a basic Discord music bot with 5 commands (~200 lines).
+
+**Commands**: `!play`, `!stop`, `!pause`, `!resume`, `!skip`
+
+### Advanced Bot (Production-Ready) ⭐ NEW
+See [advanced-bot.js](examples/advanced-bot.js) for a feature-rich bot with 19 commands (~900 lines).
+
+**Features**:
+- Rich Discord embeds with colors, thumbnails, fields
+- Interactive search with 5-result selection (30s timeout)
+- Queue pagination with Previous/Next buttons
+- Progress bar visualization with time tracking
+- Advanced queue control (playNext, move, swap, jump)
+- Comprehensive statistics and queue info
+- Full error handling with helpful messages
+
+**Commands**:
+- **Playback** (6): play, search, skip, pause, resume, stop
+- **Queue** (5): queue, shuffle, clear, remove, nowplaying
+- **Advanced** (4): playnext, move, swap, jump
+- **Info** (4): stats, queueinfo, upcoming, help
+
+### Documentation
+
+New in v3.1.0:
+- [Advanced Bot Guide](examples/ADVANCED_BOT_GUIDE.md) - Complete command reference and setup
+- [Examples Comparison](examples/EXAMPLES_COMPARISON.md) - Compare simple vs advanced bots
+- [Visual Guide](examples/ADVANCED_BOT_VISUAL.md) - Diagrams and visual examples
+- [Examples Index](examples/INDEX.md) - Master navigation guide
+
+### Node.js Example
+See [node-example.js](examples/node-example.js) for using lavaflow without Discord.js.
+
+</details>
+
 ## AutoPlay Feature
+
+<details>
+<summary><strong>🤖 Expand AutoPlay Details</strong></summary>
+
+<br>
 
 lavaflow includes intelligent AutoPlay that automatically finds and plays related tracks when your queue ends:
 
 - **YouTube**: Uses YouTube's recommendation system (RD playlists)
 - **SoundCloud**: Searches for similar tracks by artist/title
-- **Spotify**: Converts to YouTube, gets recommendations, finds related tracks
+- **Spotify**: Uses multi-step recommendation strategy with quality filtering
+  - `sprec:<trackId>` attempt (if backend supports it)
+  - title + artist matching across Spotify / YouTube Music / YouTube
+  - invalid low-quality results (e.g. numeric-only titles) are filtered
 
 AutoPlay keeps track of the last 50 played tracks to avoid repetition.
 
@@ -220,7 +435,14 @@ const manager = new Manager({
 });
 ```
 
+</details>
+
 ## Plugin System
+
+<details>
+<summary><strong>🔌 Expand Plugin System</strong></summary>
+
+<br>
 
 lavaflow supports custom plugins to extend functionality:
 
@@ -242,22 +464,92 @@ const myPlugin: LavaPlugin = {
 manager.use(myPlugin);
 ```
 
-Check out [lava-plugin-voice-status](./lava-plugin-voice-status) for a voice channel status plugin example.
+Check out [lava-plugin-voice-status](https://github.com/ryxu-xo/lava-voice-status) for a voice channel status plugin example.
+
+</details>
 
 ## API Documentation
+
+<details>
+<summary><strong>📖 Expand API Documentation</strong></summary>
+
+<br>
+
+### v3.1.0 Queue Management API
+
+```typescript
+// Add track to front of queue (play next)
+player.playNext(track): boolean;
+
+// Reorder queue positions
+player.moveTrack(fromIndex: number, toIndex: number): boolean;
+
+// Swap two queue positions
+player.swapTracks(indexA: number, indexB: number): boolean;
+
+// Jump to track and play immediately
+await player.jumpTo(index: number): Promise<boolean>;
+
+// Get queue summary
+player.getQueueInfo(): {
+  length: number;
+  totalDurationMs: number;
+  nowPlaying: Track | null;
+  upcomingSample: Track[];
+};
+
+// Peek at next N tracks
+player.getUpcoming(count?: number): Track[];
+
+// Get player metrics
+player.getMetrics(): {
+  tracksPlayed: number;
+  errorCount: number;
+  totalPlaybackTime: number;
+  sessionDuration: number;
+  uptime: number;
+  avgTracksPerMinute: number;
+};
+
+// Get history statistics
+player.getHistoryStats(): {
+  skipped: number;
+  unique: number;
+  repeated: number;
+};
+```
 
 ### Manager Options
 
 ```typescript
 interface ManagerOptions {
   nodes: NodeOptions[];
-  send: (guildId: string, payload: any) => void;
+  send: (guildId: string, payload: DiscordVoicePayload) => void;
   clientId?: string;
   shards?: number;
   autoPlay?: boolean;
-  defaultSearchPlatform?: 'ytsearch' | 'ytmsearch' | 'scsearch';
+  defaultSearchPlatform?: 'ytsearch' | 'ytmsearch' | 'scsearch' | 'spsearch' | 'amsearch';
   debug?: boolean;
+  maxQueueSize?: number;
+  apiRateLimitDelay?: number;
+  healthCheckInterval?: number;
+  autoMovePlayersOnNodeDisconnect?: boolean;
+  dave?: {
+    enabled?: boolean;
+    maxProtocolVersion?: number;
+    minLavalinkVersion?: string;
+  };
 }
+```
+
+### v3 Runtime Methods
+
+```typescript
+manager.getNodeVersions(): Promise<Map<string, string>>;
+manager.getNodeVersion(name: string): Promise<string>;
+manager.getSessionPlayers(nodeName: string): Promise<PlayerResponse[]>;
+manager.getDaveReadinessReport(): Promise<DaveReadinessReport>;
+manager.runStartupDiagnostics(): Promise<StartupDiagnosticReport>;
 ```
 
 ### Node Options
@@ -290,6 +582,8 @@ interface PlayerOptions {
   volume?: number;
 }
 ```
+
+</details>
 
 ## Design Patterns
 
