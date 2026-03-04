@@ -61,11 +61,6 @@ export class Node {
   private lastHeartbeat: number = 0;
   private heartbeatInterval: NodeJS.Timeout | null = null;
 
-  // Metrics
-  private createdAt: number = Date.now();
-  private lastDisconnect: number | null = null;
-  private disconnectCount: number = 0;
-
   constructor(options: NodeOptions) {
     this.options = {
       name: options.name,
@@ -73,7 +68,7 @@ export class Node {
       port: options.port,
       password: options.password,
       secure: options.secure ?? false,
-      resumeKey: options.resumeKey ?? 'lavaflow',
+      resumeKey: options.resumeKey ?? 'lava.ts',
       resumeTimeout: options.resumeTimeout ?? 60,
       maxReconnectAttempts: options.maxReconnectAttempts ?? 3,
       reconnectDelay: options.reconnectDelay ?? 5000,
@@ -113,7 +108,7 @@ export class Node {
       headers: {
         'Authorization': this.options.password,
         'User-Id': clientId,
-        'Client-Name': 'lavaflow/1.0.0',
+        'Client-Name': 'lava.ts/1.0.0',
         'Resume-Key': this.options.resumeKey,
       },
     });
@@ -521,38 +516,5 @@ export class Node {
       memory: memoryPenalty,
       frames: framesPenalty,
     };
-  }
-
-  /**
-   * Get node metrics (uptime, disconnect count, etc.)
-   */
-  public getMetrics(): {
-    name: string;
-    uptime: number;
-    isConnected: boolean;
-    lastDisconnect: number | null;
-    disconnectCount: number;
-    sessionId: string | null;
-    players: number;
-    playingPlayers: number;
-  } {
-    return {
-      name: this.options.name,
-      uptime: Date.now() - this.createdAt,
-      isConnected: this.state === NodeState.CONNECTED,
-      lastDisconnect: this.lastDisconnect,
-      disconnectCount: this.disconnectCount,
-      sessionId: this.sessionId,
-      players: this.stats?.players ?? 0,
-      playingPlayers: this.stats?.playingPlayers ?? 0,
-    };
-  }
-
-  /**
-   * Track a disconnect event (internal use)
-   */
-  public recordDisconnect(): void {
-    this.lastDisconnect = Date.now();
-    this.disconnectCount++;
   }
 }

@@ -19,7 +19,7 @@ import type {
 } from '../types/lavalink';
 
 /**
- * Plugin interface for lavaflow
+ * Plugin interface for lava.ts
  */
 export interface LavaPlugin {
   name: string;
@@ -72,9 +72,6 @@ export class Manager extends LavalinkEventEmitter {
       autoPlay: options.autoPlay ?? true,
       defaultSearchPlatform: options.defaultSearchPlatform ?? 'spsearch',
       debug: options.debug ?? false,
-      maxQueueSize: options.maxQueueSize ?? 1000,
-      apiRateLimitDelay: options.apiRateLimitDelay ?? 50,
-      healthCheckInterval: options.healthCheckInterval ?? 60000,
     };
 
     this.debugEnabled = this.options.debug;
@@ -187,20 +184,6 @@ export class Manager extends LavalinkEventEmitter {
     return this.nodeManager.getBestNode();
   }
 
-  /**
-   * Get metrics for all nodes
-   */
-  public getNodeMetrics() {
-    return this.nodeManager.getNodeMetrics();
-  }
-
-  /**
-   * Get metrics for a specific node
-   */
-  public getNodeMetricsById(name: string) {
-    return this.nodeManager.getNodeMetricsById(name);
-  }
-
   // ==================== Player Management ====================
 
   /**
@@ -216,17 +199,7 @@ export class Manager extends LavalinkEventEmitter {
     }
 
     const node = this.getBestNode();
-    const player = new Player(
-      options,
-      node,
-      this,
-      this.options.autoPlay,
-      this.options.defaultSearchPlatform,
-      {
-        maxQueueSize: this.options.maxQueueSize,
-        apiRateLimitDelay: this.options.apiRateLimitDelay,
-      }
-    );
+    const player = new Player(options, node, this, this.options.autoPlay, this.options.defaultSearchPlatform);
 
     this.players.set(options.guildId, player);
     this.emit('playerCreate', player);
@@ -422,7 +395,7 @@ export class Manager extends LavalinkEventEmitter {
     node.on('onTrackEnd', (event) => {
       const player = this.players.get(event.guildId);
       if (player) {
-        player.handleTrackEnd(event.track, event.reason).catch((error) => {
+        player.handleTrackEnd(event.reason).catch((error) => {
           this.emit('debug', `Error handling track end: ${error.message}`);
         });
         this.emit('trackEnd', player, event.track, event.reason);

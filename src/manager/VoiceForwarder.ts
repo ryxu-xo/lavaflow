@@ -139,8 +139,7 @@ export class VoiceForwarder {
     voiceState: VoiceConnection
   ): Promise<void> {
     if (!voiceState.sessionId || !voiceState.token || !voiceState.endpoint) {
-      this.eventEmitter.emit('debug', `Invalid voice state for guild ${player.guildId}: missing session, token, or endpoint`);
-      return;
+      throw new Error('Incomplete voice state');
     }
 
     const lavalinkVoiceState: VoiceState = {
@@ -149,19 +148,11 @@ export class VoiceForwarder {
       sessionId: voiceState.sessionId,
     };
 
-    try {
-      await player.updateVoiceState(lavalinkVoiceState);
-      this.eventEmitter.emit(
-        'debug',
-        `Forwarded voice state to Lavalink for guild ${player.guildId}`
-      );
-    } catch (error) {
-      this.eventEmitter.emit(
-        'debug',
-        `Error forwarding voice state for guild ${player.guildId}: ${error instanceof Error ? error.message : 'Unknown error'}`
-      );
-      throw error;
-    }
+    await player.updateVoiceState(lavalinkVoiceState);
+    this.eventEmitter.emit(
+      'debug',
+      `Forwarded voice state to Lavalink for guild ${player.guildId}`
+    );
   }
 
   /**

@@ -1,5 +1,5 @@
 /**
- * lavaflow - Professional-grade Lavalink v4 client library
+ * Lava.ts - Professional-grade Lavalink v4 client library
  * Main entry point for the library
  */
 
@@ -102,7 +102,7 @@ export type {
 } from './types/lavalink';
 
 // Version
-export const VERSION = '2.0.0';
+export const VERSION = '1.0.0';
 
 // Re-export Manager as default
 import { Manager as ManagerClass } from './manager/Manager';
